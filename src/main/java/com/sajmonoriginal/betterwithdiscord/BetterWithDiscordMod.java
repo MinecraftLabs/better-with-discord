@@ -1,11 +1,12 @@
 package com.sajmonoriginal.betterwithdiscord;
 
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
-import com.sajmonoriginal.betterwithdiscord.server.DiscordChatRelay;
 import com.sajmonoriginal.betterwithdiscord.server.DiscordClient;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import turniplabs.halplibe.event.defs.ServerEvents;
+import turniplabs.halplibe.util.dependency.Key;
 
 public class BetterWithDiscordMod implements DedicatedServerModInitializer {
     public static final String MOD_ID = "better_with_discord";
@@ -14,19 +15,14 @@ public class BetterWithDiscordMod implements DedicatedServerModInitializer {
     @Override
     public void onInitializeServer() {
         BetterWithDiscordConfig.load();
-        new Thread(() -> {
-            LOGGER.info("Starting Discord client...");
-            if (DiscordClient.init()) {
-                LOGGER.info("Discord client started successfully!");
-                DiscordChatRelay.sendServerStartMessage();
-            } else {
-                LOGGER.warn("Discord client failed to start or is disabled.");
-            }
-        }).start();
-        LOGGER.info("Better With Discord initialized!");
-    }
+        if (!BetterWithDiscordConfig.enabled) {
+            LOGGER.info("Discord relay is turned off in config/{}.cfg", MOD_ID);
+            return;
+        }
 
-    public static void info(String s) {
-        LOGGER.info(s);
+        ServerEvents.AFTER_SERVER_START.listen(Key.of(MOD_ID), DiscordClient::onServerStarted);
+        Thread startup = new Thread(DiscordClient::start, "Better With Discord startup");
+        startup.setDaemon(true);
+        startup.start();
     }
 }

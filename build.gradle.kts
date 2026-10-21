@@ -47,8 +47,6 @@ dependencies {
     implementation(libs.halplibe)
 
     bundled(libs.jda)
-    bundled(libs.discordWebhooks)
-    implementation(libs.discordWebhooks)
     implementation(libs.jda) {
         exclude(group = "club.minnced", module = "opus-java")
         exclude(group = "com.google.crypto.tink")

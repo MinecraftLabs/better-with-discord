@@ -10,8 +10,8 @@
 	"client": [],
 	"server": [
 		"server.MinecraftServerMixin",
-		"server.PacketHandlerLoginMixin",
 		"server.PacketHandlerServerMixin",
+		"server.PlayerListMixin",
 		"server.MobMixin",
 		"server.WorldMixin"
 	]

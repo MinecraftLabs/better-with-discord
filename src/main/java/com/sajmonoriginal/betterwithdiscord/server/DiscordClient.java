@@ -1,58 +1,92 @@
 package com.sajmonoriginal.betterwithdiscord.server;
 
-import club.minnced.discord.webhook.external.JDAWebhookClient;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.entities.User;
+import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Webhook;
 import net.dv8tion.jda.api.entities.channel.middleman.StandardGuildMessageChannel;
-import net.dv8tion.jda.api.events.GenericEvent;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
-import net.dv8tion.jda.api.hooks.EventListener;
+import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
-import net.minecraft.core.net.ChatEmotes;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.time.Duration;
 import java.util.Optional;
 
 public class DiscordClient {
-    public static JDA jda;
-    public static JDAWebhookClient webhook;
-    public static StandardGuildMessageChannel channel;
+    public static volatile JDA jda;
+    public static volatile Webhook webhook;
+    private static StandardGuildMessageChannel channel;
+    private static boolean ready;
+    private static boolean serverStarted;
 
-    public static boolean init() {
-        if (!BetterWithDiscordConfig.enabled) {
-            return false;
-        }
-
+    public static void start() {
         try {
-            JDABuilder builder = JDABuilder.create(
-                    BetterWithDiscordConfig.token,
-                    GatewayIntent.GUILD_MESSAGES,
-                    GatewayIntent.MESSAGE_CONTENT,
-                    GatewayIntent.GUILD_WEBHOOKS
-            );
-            builder.addEventListeners(new Listener());
-            builder.addEventListeners(new DiscordConsoleListener());
+            JDA client = JDABuilder.createLight(
+                            BetterWithDiscordConfig.token,
+                            GatewayIntent.GUILD_MESSAGES,
+                            GatewayIntent.MESSAGE_CONTENT
+                    )
+                    .addEventListeners(new Listener(), new DiscordConsoleListener())
+                    .build();
+            jda = client.awaitReady();
+            webhook = findWebhook();
 
-            jda = builder.build().awaitReady();
-            
             if (BetterWithDiscordConfig.consoleEnabled) {
                 ConsoleAppender.register();
                 BetterWithDiscordMod.LOGGER.info("Console forwarding enabled to channel: {}", BetterWithDiscordConfig.consoleChannel);
             }
+            BetterWithDiscordMod.LOGGER.info("Connected to Discord as {}", client.getSelfUser().getName());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return;
+        } catch (RuntimeException e) {
+            BetterWithDiscordMod.LOGGER.error("Unable to start the Discord bot", e);
+            return;
+        }
 
-            return true;
-        } catch (Throwable t) {
-            BetterWithDiscordMod.LOGGER.error("Unable to start discord bot.", t);
-            return false;
+        synchronized (DiscordClient.class) {
+            ready = true;
+            if (serverStarted) {
+                DiscordChatRelay.sendServerStartMessage();
+            }
         }
     }
 
-    public static @Nullable StandardGuildMessageChannel getChannel() {
+    public static void onServerStarted() {
+        synchronized (DiscordClient.class) {
+            serverStarted = true;
+            if (ready) {
+                DiscordChatRelay.sendServerStartMessage();
+            }
+        }
+    }
+
+    public static void stop() {
+        JDA client = jda;
+        if (client == null) {
+            return;
+        }
+
+        DiscordChatRelay.sendServerStoppedMessage();
+        ConsoleAppender.unregister();
+        webhook = null;
+        jda = null;
+        client.shutdown();
+        try {
+            if (!client.awaitShutdown(Duration.ofSeconds(5))) {
+                client.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            client.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static @Nullable StandardGuildMessageChannel getChannel() {
         if (jda == null) {
             return null;
         }
@@ -64,66 +98,36 @@ public class DiscordClient {
         return channel;
     }
 
-    public static @Nullable JDAWebhookClient getWebhook() {
-        if (webhook != null) {
-            return webhook;
-        }
-
+    private static @Nullable Webhook findWebhook() {
         StandardGuildMessageChannel channel = getChannel();
-
         if (channel == null) {
+            BetterWithDiscordMod.LOGGER.warn("Chat channel {} was not found", BetterWithDiscordConfig.chatChannel);
             return null;
         }
 
-        Optional<Webhook> optionalWebhook = channel.retrieveWebhooks().complete().stream().filter((it) -> {
-            User owner = it.getOwnerAsUser();
-            if (owner == null) {
-                return false;
-            }
-            return owner.getId().equals(jda.getSelfUser().getId());
-        }).findFirst();
-
-        Webhook webhook = optionalWebhook.orElseGet(() -> channel.createWebhook("BTA Chat Link").complete());
-
-        if (webhook == null) {
-            return null;
-        }
-
-        DiscordClient.webhook = JDAWebhookClient.from(webhook);
-
-        return DiscordClient.webhook;
+        String selfId = jda.getSelfUser().getId();
+        Optional<Webhook> owned = channel.retrieveWebhooks().complete().stream()
+                .filter(it -> it.getToken() != null && it.getOwnerAsUser() != null && it.getOwnerAsUser().getId().equals(selfId))
+                .findFirst();
+        return owned.orElseGet(() -> channel.createWebhook("BTA Chat Link").complete());
     }
 
-    public static class Listener implements EventListener {
+    public static class Listener extends ListenerAdapter {
 
         @Override
-        public void onEvent(@NotNull GenericEvent event) {
-            if (event instanceof MessageReceivedEvent) {
-                MessageReceivedEvent message = (MessageReceivedEvent) event;
-
-                if (message.isWebhookMessage() || message.getAuthor().isBot() || message.getAuthor().isSystem()) {
-                    return;
-                }
-
-                if (!message.isFromGuild()) {
-                    return;
-                }
-
-                if (!message.getMessage().getChannel().getId().equals(BetterWithDiscordConfig.chatChannel)) {
-                    return;
-                }
-
-                User user = message.getAuthor();
-
-                String username = getDisplayName(user);
-                String content = ChatEmotes.process(message.getMessage().getContentStripped());
-
-                DiscordChatRelay.sendToMinecraft(username, content);
+        public void onMessageReceived(@NotNull MessageReceivedEvent event) {
+            if (event.isWebhookMessage() || event.getAuthor().isBot() || event.getAuthor().isSystem() || !event.isFromGuild()) {
+                return;
             }
-        }
 
-        public static String getDisplayName(User user) {
-            return user.getName();
+            if (!event.getChannel().getId().equals(BetterWithDiscordConfig.chatChannel)) {
+                return;
+            }
+
+            Member member = event.getMember();
+            String author = member != null ? member.getEffectiveName() : event.getAuthor().getEffectiveName();
+            String content = event.getMessage().getContentStripped();
+            ServerThread.execute(() -> DiscordChatRelay.sendToMinecraft(author, content));
         }
     }
 }

@@ -9,11 +9,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = World.class, remap = false)
 public class WorldMixin {
-    @Inject(
-            method = "wakeUpAllPlayers",
-            at = @At("RETURN")
-    )
-    public void sendServerSleepMessage(CallbackInfo ci) {
+    @Inject(method = "wakeUpAllPlayers", at = @At("RETURN"))
+    private void betterWithDiscord$announceSkippedNight(CallbackInfo ci) {
         DiscordChatRelay.sendServerSleepMessage();
     }
 }

@@ -1,99 +1,126 @@
 package com.sajmonoriginal.betterwithdiscord.server;
 
-import club.minnced.discord.webhook.external.JDAWebhookClient;
-import club.minnced.discord.webhook.send.WebhookEmbed;
-import club.minnced.discord.webhook.send.WebhookEmbedBuilder;
-import club.minnced.discord.webhook.send.WebhookMessageBuilder;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
-import net.minecraft.server.MinecraftServer;
+import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.Webhook;
+import net.minecraft.core.entity.player.Player;
+import net.minecraft.core.net.ChatEmotes;
 import net.minecraft.core.net.command.TextFormatting;
+import net.minecraft.core.util.helper.NetCharacters;
+import net.minecraft.server.MinecraftServer;
+
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class DiscordChatRelay {
-
-    private static final JDAWebhookClient webhookClient = DiscordClient.getWebhook();
+    private static final int MAX_LINE_LENGTH = 256;
+    private static final int MAX_LINES = 10;
 
     public static void sendToMinecraft(String author, String message) {
         MinecraftServer server = MinecraftServer.getInstance();
-        message = "[" + TextFormatting.PURPLE + "DISCORD" + TextFormatting.RESET + "] <" + author + "> " + message;
-        BetterWithDiscordMod.info(message);
-        String[] lines = message.split("\n");
-        for (String chatMessage : lines) {
-            server.playerList.sendEncryptedChatToAllPlayers(chatMessage);
+        String prefix = "[" + TextFormatting.PURPLE + "DISCORD" + TextFormatting.RESET + "] <" + clean(author) + "> ";
+        int sent = 0;
+        for (String line : message.split("\n")) {
+            String text = ChatEmotes.process(clean(line)).trim();
+            if (text.isEmpty()) {
+                continue;
+            }
+            if (text.length() > MAX_LINE_LENGTH) {
+                text = text.substring(0, MAX_LINE_LENGTH);
+            }
+            String chat = prefix + text;
+            BetterWithDiscordMod.LOGGER.info(chat);
+            server.playerList.sendEncryptedChatToAllPlayers(chat);
+            if (++sent == MAX_LINES) {
+                break;
+            }
         }
     }
 
-    public static void sendToDiscord(String author, String message) {
-        if (webhookClient == null) return;
-        WebhookMessageBuilder builder = new WebhookMessageBuilder();
-        builder.setUsername(author);
-        builder.setAvatarUrl("https://www.mc-heads.net/head/" + author + "/" + "150");
-        builder.setContent(message);
-        webhookClient.send(builder.build());
+    private static String clean(String text) {
+        StringBuilder cleaned = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c != TextFormatting.SPECIAL_CHAR && NetCharacters.isAllowed(c)) {
+                cleaned.append(c);
+            }
+        }
+        return cleaned.toString();
     }
 
-    public static void sendJoinLeaveMessage(String username, boolean joined) {
-        if (webhookClient == null) return;
-        String avatarUrl = "https://www.mc-heads.net/head/" + username;
-        String joinLeaveText = username + (joined ? " joined" : " left") + " the server";
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+    public static void sendToDiscord(Player player, String message) {
+        Webhook webhook = DiscordClient.webhook;
+        if (webhook == null) return;
+        webhook.sendMessage(TextFormatting.removeAllFormatting(message))
+                .setUsername(TextFormatting.removeAllFormatting(player.getDisplayName()))
+                .setAvatarUrl("https://www.mc-heads.net/head/" + player.username + "/150")
+                .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
+                .queue();
+    }
+
+    public static void sendJoinLeaveMessage(Player player, boolean joined) {
+        String name = TextFormatting.removeAllFormatting(player.getDisplayName());
+        sendEmbed(new EmbedBuilder()
                 .setColor(joined ? 0x00FF00 : 0xFF0000)
-                .setAuthor(new WebhookEmbed.EmbedAuthor(joinLeaveText, avatarUrl, null))
-                .build();
-        sendMessage(null, embed);
+                .setAuthor(name + (joined ? " joined" : " left") + " the server", null, "https://www.mc-heads.net/head/" + player.username)
+                .build());
     }
 
     public static void sendDeathMessage(String deathMessage) {
-        if (webhookClient == null) return;
-        String avatarUrl = "https://i.imgur.com/l1EJ6fx.png";
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+        sendEmbed(new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setAuthor(new WebhookEmbed.EmbedAuthor(deathMessage, avatarUrl, null))
-                .build();
-        sendMessage(null, embed);
+                .setAuthor(deathMessage, null, "https://i.imgur.com/l1EJ6fx.png")
+                .build());
     }
 
     public static void sendServerStartMessage() {
-        if (webhookClient == null) return;
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+        sendEmbed(new EmbedBuilder()
                 .setColor(0x4ae485)
-                .setAuthor(new WebhookEmbed.EmbedAuthor("Server started!", null, null))
+                .setAuthor("Server started!")
                 .setTimestamp(Instant.now())
-                .build();
-        sendMessage(null, embed);
+                .build());
     }
 
     public static void sendServerStoppedMessage() {
-        if (webhookClient == null) return;
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+        Webhook webhook = DiscordClient.webhook;
+        if (webhook == null) return;
+        MessageEmbed embed = new EmbedBuilder()
                 .setColor(0xf92f60)
-                .setAuthor(new WebhookEmbed.EmbedAuthor("Server stopped!", null, null))
+                .setAuthor("Server stopped!")
                 .setTimestamp(Instant.now())
                 .build();
-        sendMessage(null, embed);
+        try {
+            webhook.sendMessageEmbeds(embed)
+                    .setUsername(BetterWithDiscordConfig.serverName)
+                    .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl)
+                    .submit()
+                    .get(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            BetterWithDiscordMod.LOGGER.warn("Could not send the stop message to Discord", e);
+        }
     }
 
     public static void sendServerSleepMessage() {
-        if (webhookClient == null) return;
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+        sendEmbed(new EmbedBuilder()
                 .setColor(0x222d5a)
-                .setAuthor(new WebhookEmbed.EmbedAuthor("The Night was Skipped", "https://i.imgur.com/R1e1sJS.png", null))
-                .build();
-        sendMessage(null, embed);
+                .setAuthor("The Night was Skipped", null, "https://i.imgur.com/R1e1sJS.png")
+                .build());
     }
 
-    public static void sendMessage(String content, WebhookEmbed embed) {
-        if (webhookClient == null) return;
-        WebhookMessageBuilder builder = new WebhookMessageBuilder();
-        builder.setUsername(BetterWithDiscordConfig.serverName);
-        builder.setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl);
-        if (content != null && !content.isEmpty()) {
-            builder.setContent(content);
-        }
-        if (embed != null) {
-            builder.addEmbeds(embed);
-        }
-        webhookClient.send(builder.build());
+    private static void sendEmbed(MessageEmbed embed) {
+        Webhook webhook = DiscordClient.webhook;
+        if (webhook == null) return;
+        webhook.sendMessageEmbeds(embed)
+                .setUsername(BetterWithDiscordConfig.serverName)
+                .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl)
+                .queue();
     }
 }
