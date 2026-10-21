@@ -32,6 +32,7 @@ public final class BetterWithDiscordConfig {
     public static boolean consoleCommandsEnabled;
     public static String consoleCommandPrefix;
     public static List<String> consoleCommandBlacklist;
+    public static List<String> consoleAllowedCommands;
 
     private BetterWithDiscordConfig() {
     }
@@ -58,7 +59,8 @@ public final class BetterWithDiscordConfig {
                 .addEntry("channel", "ID of the console channel", legacyString(migrated, "console_channel", ""))
                 .addEntry("commands", "Run messages sent to the console channel as commands", legacyBoolean(migrated, "console_commands_enable", true))
                 .addEntry("command_prefix", "Only run messages that start with this prefix", legacyString(migrated, "console_command_prefix", ""))
-                .addEntry("command_blacklist", "Commands that can't be run from Discord, separated by commas", legacyList(migrated, "console_command_blacklist", "stop, op, deop, ban, unban"));
+                .addEntry("command_blacklist", "Commands that can't be run from Discord, separated by commas", legacyList(migrated, "console_command_blacklist", "stop, op, deop, ban, unban"))
+                .addEntry("allowed_commands", "When set, only these commands can be run from Discord, separated by commas", "");
 
         TomlConfigHandler config = new TomlConfigHandler(BetterWithDiscordMod.MOD_ID, defaults);
         enabled = config.getBoolean("discord.enable");
@@ -72,10 +74,8 @@ public final class BetterWithDiscordConfig {
         consoleChannel = config.getString("console.channel");
         consoleCommandsEnabled = config.getBoolean("console.commands");
         consoleCommandPrefix = config.getString("console.command_prefix");
-        consoleCommandBlacklist = Arrays.stream(config.getString("console.command_blacklist").split(","))
-                .map(command -> command.trim().toLowerCase(Locale.ROOT))
-                .filter(command -> !command.isEmpty())
-                .toList();
+        consoleCommandBlacklist = commandList(config.getString("console.command_blacklist"));
+        consoleAllowedCommands = commandList(config.getString("console.allowed_commands"));
 
         if (migrated != null) {
             try {
@@ -85,6 +85,13 @@ public final class BetterWithDiscordConfig {
                 BetterWithDiscordMod.LOGGER.warn("Could not rename {}", legacy, e);
             }
         }
+    }
+
+    private static List<String> commandList(String value) {
+        return Arrays.stream(value.split(","))
+                .map(command -> command.trim().toLowerCase(Locale.ROOT))
+                .filter(command -> !command.isEmpty())
+                .toList();
     }
 
     private static JsonObject readLegacy(Path file) {

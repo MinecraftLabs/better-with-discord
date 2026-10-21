@@ -1,8 +1,12 @@
 package com.sajmonoriginal.betterwithdiscord.server;
 
+import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.StandardGuildMessageChannel;
+import net.dv8tion.jda.api.utils.MarkdownUtil;
 import net.minecraft.core.net.command.TextFormatting;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
@@ -11,6 +15,8 @@ import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
 import org.apache.logging.log4j.core.config.Property;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -22,7 +28,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class ConsoleAppender extends AbstractAppender {
-    private static final int MAX_MESSAGE_LENGTH = 1900;
+    private static final int MAX_TRACE_LINES = 20;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
     private static final List<String> IGNORED_LOGGERS = List.of(
             "net.dv8tion", "JDA", "WebSocketClient", "Requester", "RestAction", "RestRateLimiter",
@@ -74,25 +80,27 @@ public class ConsoleAppender extends AbstractAppender {
             return;
         }
 
-        StringBuilder batch = new StringBuilder();
+        String batch = "";
         String line;
         while ((line = lines.poll()) != null) {
-            if (batch.length() + line.length() + 1 > MAX_MESSAGE_LENGTH) {
+            String joined = batch.isEmpty() ? line : batch + "\n" + line;
+            if (!batch.isEmpty() && MarkdownUtil.codeblock(joined).length() > Message.MAX_CONTENT_LENGTH) {
                 send(channel, batch);
-                batch.setLength(0);
+                joined = line;
             }
-            if (!batch.isEmpty()) {
-                batch.append('\n');
-            }
-            batch.append(line);
+            batch = joined;
         }
         if (!batch.isEmpty()) {
             send(channel, batch);
         }
     }
 
-    private static void send(MessageChannel channel, CharSequence content) {
-        channel.sendMessage("```\n" + content + "\n```").queue();
+    private static void send(MessageChannel channel, String content) {
+        String block = MarkdownUtil.codeblock(content);
+        if (block.length() > Message.MAX_CONTENT_LENGTH) {
+            block = MarkdownUtil.codeblock(content.substring(0, Math.max(0, content.length() - (block.length() - Message.MAX_CONTENT_LENGTH) - 3)) + "...");
+        }
+        channel.sendMessage(block).queue(null, error -> BetterWithDiscordMod.LOGGER.debug("Could not send console lines to Discord", error));
     }
 
     private static MessageChannel consoleChannel() {
@@ -100,7 +108,7 @@ public class ConsoleAppender extends AbstractAppender {
         if (jda == null || BetterWithDiscordConfig.consoleChannel.isEmpty()) {
             return null;
         }
-        return jda.getTextChannelById(BetterWithDiscordConfig.consoleChannel);
+        return jda.getChannelById(StandardGuildMessageChannel.class, BetterWithDiscordConfig.consoleChannel);
     }
 
     @Override
@@ -121,11 +129,13 @@ public class ConsoleAppender extends AbstractAppender {
             }
         }
 
-        String message = TextFormatting.removeAllFormatting(event.getMessage().getFormattedMessage()).replace("```", "``\u200b`");
-        String line = String.format("[%s %s] [%s] %s", TIME_FORMAT.format(Instant.ofEpochMilli(event.getTimeMillis())), event.getLevel().name(), logger, message);
-        if (line.length() > MAX_MESSAGE_LENGTH) {
-            line = line.substring(0, MAX_MESSAGE_LENGTH - 3) + "...";
+        String message = TextFormatting.removeAllFormatting(event.getMessage().getFormattedMessage());
+        lines.offer(String.format("[%s %s] [%s] %s", TIME_FORMAT.format(Instant.ofEpochMilli(event.getTimeMillis())), event.getLevel().name(), logger, message));
+        Throwable thrown = event.getThrown();
+        if (thrown != null) {
+            StringWriter trace = new StringWriter();
+            thrown.printStackTrace(new PrintWriter(trace));
+            trace.toString().lines().limit(MAX_TRACE_LINES).forEach(lines::offer);
         }
-        lines.offer(line);
     }
 }
