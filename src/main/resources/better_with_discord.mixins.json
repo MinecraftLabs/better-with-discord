@@ -1,20 +1,18 @@
 {
-  "required": true,
-  "minVersion": "0.8",
-  "package": "com.sajmonoriginal.betterwithdiscord.mixin",
-  "compatibilityLevel": "JAVA_${java}",
-  "mixins": [
-  ],
-  "client": [
-  ],
-  "server": [
-    "server.MinecraftServerMixin",
-    "server.PacketHandlerLoginMixin",
-    "server.PacketHandlerServerMixin",
-    "server.MobMixin",
-    "server.WorldMixin"
-  ],
-  "injectors": {
-    "defaultRequire": 1
-  }
+	"required": true,
+	"minVersion": "0.8",
+	"package": "com.sajmonoriginal.betterwithdiscord.mixin",
+	"compatibilityLevel": "JAVA_${java}",
+	"injectors": {
+		"defaultRequire": 1
+	},
+	"mixins": [],
+	"client": [],
+	"server": [
+		"server.MinecraftServerMixin",
+		"server.PacketHandlerServerMixin",
+		"server.PlayerListMixin",
+		"server.MobMixin",
+		"server.WorldMixin"
+	]
 }

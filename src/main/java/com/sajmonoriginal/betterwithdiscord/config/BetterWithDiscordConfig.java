@@ -1,116 +1,146 @@
 package com.sajmonoriginal.betterwithdiscord.config;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import net.fabricmc.loader.api.FabricLoader;
+import turniplabs.halplibe.util.TomlConfigHandler;
+import turniplabs.halplibe.util.toml.Toml;
 
-import java.io.File;
-import java.io.FileReader;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 
-public class BetterWithDiscordConfig {
-    public static final Gson GSON = new GsonBuilder()
-            .setPrettyPrinting()
-            .create();
+public final class BetterWithDiscordConfig {
+    public static boolean enabled;
+    public static String token;
+    public static String chatChannel;
+    public static String serverName;
+    public static String serverAvatarUrl;
+    public static boolean showPlayerCount;
+    public static int watchdogSeconds;
+    public static boolean itemImages;
+    public static String tooltipStyle;
+    public static int imagePreviewSeconds;
 
-    public static boolean discord_enable = false;
-    public static String discord_token = "SUPER SECRET TOKEN";
-    public static String discord_channel = "CHANNEL ID";
-    public static String discord_serverpfp_url = "https://i.imgur.com/dJUId0O.png";
-    public static String discord_servername = "Server";
-    
-    public static boolean console_enable = false;
-    public static String console_channel = "";
-    public static boolean console_commands_enable = true;
-    public static String console_command_prefix = "";
-    public static java.util.List<String> console_command_blacklist = new java.util.ArrayList<>(java.util.Arrays.asList("stop", "op", "deop", "ban", "pardon"));
+    public static boolean consoleEnabled;
+    public static String consoleChannel;
+    public static boolean consoleCommandsEnabled;
+    public static String consoleCommandPrefix;
+    public static List<String> consoleCommandBlacklist;
+    public static List<String> consoleAllowedCommands;
+
+    private BetterWithDiscordConfig() {
+    }
 
     public static void load() {
-        File file = getFilePath();
-
-        if (!file.exists()) {
-            initFile(file);
+        Path configDir = FabricLoader.getInstance().getConfigDir();
+        Path legacy = configDir.resolve(BetterWithDiscordMod.MOD_ID + ".json");
+        JsonObject migrated = null;
+        if (!Files.exists(configDir.resolve(BetterWithDiscordMod.MOD_ID + ".cfg")) && Files.exists(legacy)) {
+            migrated = readLegacy(legacy);
         }
 
-        try {
-            FileReader reader = new FileReader(file);
-            JsonObject obj = GSON.fromJson(reader, JsonObject.class);
-            reader.close();
+        Toml defaults = new Toml("Better With Discord");
+        defaults.addCategory("Chat relay between the server and a Discord channel", "discord")
+                .addEntry("enable", legacyBoolean(migrated, "enable", false))
+                .addEntry("token", "Bot token from the Discord Developer Portal", legacyString(migrated, "token", ""))
+                .addEntry("channel", "ID of the chat channel", legacyString(migrated, "channel", ""))
+                .addEntry("server_name", "Name used for server messages", legacyString(migrated, "servername", "Server"))
+                .addEntry("server_avatar_url", "Avatar used for server messages", legacyString(migrated, "serverpfp_url", "https://i.imgur.com/dJUId0O.png"))
+                .addEntry("show_player_count", "Show the number of online players as the bot status", true)
+                .addEntry("watchdog_seconds", "Post a warning when the server stops ticking for this many seconds, 0 turns it off", 60)
+                .addEntry("item_images", "Show [item] in chat as a picture of the held item, downloads the BTA client once for its textures", true)
+                .addEntry("tooltip_style", "Tooltip style used for item pictures, as in the BTA options", "default")
+                .addEntry("image_preview_seconds", "How long /preview shows a Discord image as a map in the hand, 0 turns it off", 60);
+        defaults.addCategory("Server console in a Discord channel", "console")
+                .addEntry("enable", legacyBoolean(migrated, "console_enable", false))
+                .addEntry("channel", "ID of the console channel", legacyString(migrated, "console_channel", ""))
+                .addEntry("commands", "Run messages sent to the console channel as commands", legacyBoolean(migrated, "console_commands_enable", true))
+                .addEntry("command_prefix", "Only run messages that start with this prefix", legacyString(migrated, "console_command_prefix", ""))
+                .addEntry("command_blacklist", "Commands that can't be run from Discord, separated by commas", legacyList(migrated, "console_command_blacklist", "stop, op, deop, ban, unban"))
+                .addEntry("allowed_commands", "When set, only these commands can be run from Discord, separated by commas", "");
 
-            updateValues(obj);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        TomlConfigHandler config = new TomlConfigHandler(BetterWithDiscordMod.MOD_ID, defaults);
+        enabled = config.getBoolean("discord.enable");
+        token = config.getString("discord.token");
+        chatChannel = config.getString("discord.channel");
+        serverName = config.getString("discord.server_name");
+        serverAvatarUrl = config.getString("discord.server_avatar_url");
+        showPlayerCount = config.getBoolean("discord.show_player_count");
+        watchdogSeconds = config.getInt("discord.watchdog_seconds");
+        itemImages = config.getBoolean("discord.item_images");
+        tooltipStyle = config.getString("discord.tooltip_style");
+        imagePreviewSeconds = config.getInt("discord.image_preview_seconds");
+        consoleEnabled = config.getBoolean("console.enable");
+        consoleChannel = config.getString("console.channel");
+        consoleCommandsEnabled = config.getBoolean("console.commands");
+        consoleCommandPrefix = config.getString("console.command_prefix");
+        consoleCommandBlacklist = commandList(config.getString("console.command_blacklist"));
+        consoleAllowedCommands = commandList(config.getString("console.allowed_commands"));
+
+        if (migrated != null) {
+            try {
+                Files.move(legacy, legacy.resolveSibling(legacy.getFileName() + ".old"), StandardCopyOption.REPLACE_EXISTING);
+                BetterWithDiscordMod.LOGGER.info("Moved the settings from {} to {}.cfg", legacy.getFileName(), BetterWithDiscordMod.MOD_ID);
+            } catch (IOException e) {
+                BetterWithDiscordMod.LOGGER.warn("Could not rename {}", legacy, e);
+            }
         }
-
-        save();
     }
 
-    public static void save() {
-        File file = getFilePath();
-        JsonObject obj = new JsonObject();
-        updateValues(obj);
+    private static List<String> commandList(String value) {
+        return Arrays.stream(value.split(","))
+                .map(command -> command.trim().toLowerCase(Locale.ROOT))
+                .filter(command -> !command.isEmpty())
+                .toList();
+    }
 
-        try {
-            FileWriter writer = new FileWriter(file);
-            writer.write(GSON.toJson(obj));
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+    private static JsonObject readLegacy(Path file) {
+        try (Reader reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
+            JsonElement element = JsonParser.parseReader(reader);
+            return element.isJsonObject() ? element.getAsJsonObject() : null;
+        } catch (Exception e) {
+            BetterWithDiscordMod.LOGGER.warn("Could not read the old config {}", file, e);
+            return null;
         }
     }
 
-    public static void initFile(File file) {
-        try {
-            boolean ignore = file.createNewFile();
-            FileWriter writer = new FileWriter(file);
-            writer.write("{}");
-            writer.close();
-        } catch (IOException e) {
-            e.printStackTrace();
+    private static String legacyString(JsonObject legacy, String key, String fallback) {
+        if (legacy == null || !legacy.has(key) || !legacy.get(key).isJsonPrimitive()) {
+            return fallback;
         }
+        return legacy.get(key).getAsString();
     }
 
-    @SuppressWarnings("unchecked")
-    public static <T> T get(JsonObject object, String key, T defaultValue) {
-        JsonElement element = object.get(key);
-        if (element == null) {
-            object.add(key, GSON.toJsonTree(defaultValue));
-            return defaultValue;
+    private static boolean legacyBoolean(JsonObject legacy, String key, boolean fallback) {
+        if (legacy == null || !legacy.has(key) || !legacy.get(key).isJsonPrimitive()) {
+            return fallback;
         }
-        if (defaultValue instanceof java.util.List) {
-            return (T) GSON.fromJson(element, java.util.ArrayList.class);
+        return legacy.get(key).getAsBoolean();
+    }
+
+    private static String legacyList(JsonObject legacy, String key, String fallback) {
+        if (legacy == null || !legacy.has(key) || !legacy.get(key).isJsonArray()) {
+            return fallback;
         }
-        return GSON.fromJson(element, (Class<T>)defaultValue.getClass());
-    }
-
-    @SuppressWarnings("unchecked")
-    public static void updateValues(JsonObject object) {
-        discord_enable = get(object, "enable", discord_enable);
-        discord_token = get(object, "token", discord_token);
-        discord_channel = get(object, "channel", discord_channel);
-        discord_serverpfp_url = get(object, "serverpfp_url", discord_serverpfp_url);
-        discord_servername = get(object, "servername", discord_servername);
-        
-        console_enable = get(object, "console_enable", console_enable);
-        console_channel = get(object, "console_channel", console_channel);
-        console_commands_enable = get(object, "console_commands_enable", console_commands_enable);
-        console_command_prefix = get(object, "console_command_prefix", console_command_prefix);
-        console_command_blacklist = get(object, "console_command_blacklist", console_command_blacklist);
-    }
-
-    public static File getFilePath() {
-        return FabricLoader.getInstance().getConfigDir().resolve("better_with_discord.json").toFile();
-    }
-
-    public static void printConfigValues() {
-        BetterWithDiscordMod.info("discord.enable = " + discord_enable);
-    }
-
-    static {
-        load();
+        StringBuilder joined = new StringBuilder();
+        for (JsonElement element : legacy.getAsJsonArray(key)) {
+            if (!element.isJsonPrimitive()) {
+                continue;
+            }
+            if (!joined.isEmpty()) {
+                joined.append(", ");
+            }
+            joined.append(element.getAsString());
+        }
+        return joined.toString();
     }
 }

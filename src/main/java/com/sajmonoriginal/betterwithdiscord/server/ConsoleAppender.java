@@ -1,163 +1,141 @@
 package com.sajmonoriginal.betterwithdiscord.server;
 
+import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
+import net.dv8tion.jda.api.JDA;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.StandardGuildMessageChannel;
+import net.dv8tion.jda.api.utils.MarkdownUtil;
+import net.minecraft.core.net.command.TextFormatting;
 import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.core.Appender;
-import org.apache.logging.log4j.core.Core;
-import org.apache.logging.log4j.core.Filter;
+import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.Logger;
 import org.apache.logging.log4j.core.appender.AbstractAppender;
-import org.apache.logging.log4j.core.config.plugins.Plugin;
-import org.apache.logging.log4j.core.config.plugins.PluginAttribute;
-import org.apache.logging.log4j.core.config.plugins.PluginElement;
-import org.apache.logging.log4j.core.config.plugins.PluginFactory;
+import org.apache.logging.log4j.core.config.Property;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.List;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-@Plugin(name = "DiscordConsole", category = Core.CATEGORY_NAME, elementType = Appender.ELEMENT_TYPE)
 public class ConsoleAppender extends AbstractAppender {
-
-    private static final int MAX_MESSAGE_LENGTH = 1900;
+    private static final int MAX_TRACE_LINES = 20;
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault());
-    
-    private static final Set<String> IGNORED_LOGGERS = new HashSet<>(Arrays.asList(
-            "JDA", "WebSocketClient", "Requester", "RestAction", "RestRateLimiter", 
+    private static final List<String> IGNORED_LOGGERS = List.of(
+            "net.dv8tion", "JDA", "WebSocketClient", "Requester", "RestAction", "RestRateLimiter",
             "Decompressor", "FabricLoader/Mixin", "halplibe"
-    ));
+    );
 
     private static ConsoleAppender instance;
-    private final ConcurrentLinkedQueue<String> messageQueue = new ConcurrentLinkedQueue<>();
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
-    protected ConsoleAppender(String name, Filter filter) {
-        super(name, filter, null, true, null);
-        instance = this;
-        startQueueProcessor();
+    private final Queue<String> lines = new ConcurrentLinkedQueue<>();
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "Better With Discord console");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private ConsoleAppender() {
+        super("DiscordConsole", null, null, true, Property.EMPTY_ARRAY);
     }
 
-    @PluginFactory
-    public static ConsoleAppender createAppender(
-            @PluginAttribute("name") String name,
-            @PluginElement("Filter") Filter filter) {
-        return new ConsoleAppender(name != null ? name : "DiscordConsole", filter);
-    }
-
-    public static ConsoleAppender getInstance() {
-        return instance;
-    }
-
-    public static void register() {
-        if (instance == null) {
-            instance = new ConsoleAppender("DiscordConsole", null);
-            org.apache.logging.log4j.core.Logger rootLogger = 
-                (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getRootLogger();
-            instance.start();
-            rootLogger.addAppender(instance);
-        }
-    }
-
-    public static void unregister() {
+    public static synchronized void register() {
         if (instance != null) {
-            org.apache.logging.log4j.core.Logger rootLogger = 
-                (org.apache.logging.log4j.core.Logger) org.apache.logging.log4j.LogManager.getRootLogger();
-            rootLogger.removeAppender(instance);
-            instance.stop();
-            instance.scheduler.shutdown();
-            instance = null;
-        }
-    }
-
-    private void startQueueProcessor() {
-        scheduler.scheduleAtFixedRate(this::processQueue, 2, 2, TimeUnit.SECONDS);
-    }
-
-    private void processQueue() {
-        if (!BetterWithDiscordConfig.console_enable || DiscordClient.jda == null) {
             return;
         }
+        instance = new ConsoleAppender();
+        instance.start();
+        instance.scheduler.scheduleWithFixedDelay(instance::flush, 2, 2, TimeUnit.SECONDS);
+        rootLogger().addAppender(instance);
+    }
 
-        MessageChannel channel = getConsoleChannel();
+    public static synchronized void unregister() {
+        if (instance == null) {
+            return;
+        }
+        rootLogger().removeAppender(instance);
+        instance.scheduler.shutdown();
+        instance.flush();
+        instance.stop();
+        instance = null;
+    }
+
+    private static Logger rootLogger() {
+        return (Logger) LogManager.getRootLogger();
+    }
+
+    private synchronized void flush() {
+        MessageChannel channel = consoleChannel();
         if (channel == null) {
+            lines.clear();
             return;
         }
 
-        StringBuilder batch = new StringBuilder();
+        String batch = "";
         String line;
-        while ((line = messageQueue.poll()) != null) {
-            if (batch.length() + line.length() + 1 > MAX_MESSAGE_LENGTH) {
-                sendBatch(channel, batch.toString());
-                batch = new StringBuilder();
+        while ((line = lines.poll()) != null) {
+            String joined = batch.isEmpty() ? line : batch + "\n" + line;
+            if (!batch.isEmpty() && MarkdownUtil.codeblock(joined).length() > Message.MAX_CONTENT_LENGTH) {
+                send(channel, batch);
+                joined = line;
             }
-            if (batch.length() > 0) {
-                batch.append("\n");
-            }
-            batch.append(line);
+            batch = joined;
         }
-
-        if (batch.length() > 0) {
-            sendBatch(channel, batch.toString());
+        if (!batch.isEmpty()) {
+            send(channel, batch);
         }
     }
 
-    private void sendBatch(MessageChannel channel, String content) {
-        try {
-            channel.sendMessage("```\n" + content + "\n```").queue();
-        } catch (Exception ignored) {
+    private static void send(MessageChannel channel, String content) {
+        String block = MarkdownUtil.codeblock(content);
+        if (block.length() > Message.MAX_CONTENT_LENGTH) {
+            block = MarkdownUtil.codeblock(content.substring(0, Math.max(0, content.length() - (block.length() - Message.MAX_CONTENT_LENGTH) - 3)) + "...");
         }
+        channel.sendMessage(block).queue(null, error -> BetterWithDiscordMod.LOGGER.debug("Could not send console lines to Discord", error));
     }
 
-    private MessageChannel getConsoleChannel() {
-        if (DiscordClient.jda == null || BetterWithDiscordConfig.console_channel.isEmpty()) {
+    private static MessageChannel consoleChannel() {
+        JDA jda = DiscordClient.jda;
+        if (jda == null || BetterWithDiscordConfig.consoleChannel.isEmpty()) {
             return null;
         }
-        return DiscordClient.jda.getTextChannelById(BetterWithDiscordConfig.console_channel);
+        return jda.getChannelById(StandardGuildMessageChannel.class, BetterWithDiscordConfig.consoleChannel);
     }
 
     @Override
     public void append(LogEvent event) {
-        if (!BetterWithDiscordConfig.console_enable) {
+        if (event.getLevel().intLevel() > Level.INFO.intLevel()) {
             return;
         }
 
-        Level level = event.getLevel();
-        if (level.intLevel() > Level.INFO.intLevel()) {
-            return;
-        }
-
-        String loggerName = event.getLoggerName();
-        if (loggerName != null) {
+        String logger = event.getLoggerName();
+        if (logger != null) {
             for (String ignored : IGNORED_LOGGERS) {
-                if (loggerName.contains(ignored)) {
+                if (logger.contains(ignored)) {
                     return;
                 }
             }
+            if (logger.length() > 20) {
+                logger = logger.substring(logger.lastIndexOf('.') + 1);
+            }
         }
 
-        String time = TIME_FORMAT.format(Instant.ofEpochMilli(event.getTimeMillis()));
-        String levelName = level.name();
-        String logger = loggerName;
-        String message = event.getMessage().getFormattedMessage();
-
-        if (logger != null && logger.length() > 20) {
-            logger = logger.substring(logger.lastIndexOf('.') + 1);
+        String message = TextFormatting.removeAllFormatting(event.getMessage().getFormattedMessage());
+        lines.offer(String.format("[%s %s] [%s] %s", TIME_FORMAT.format(Instant.ofEpochMilli(event.getTimeMillis())), event.getLevel().name(), logger, message));
+        Throwable thrown = event.getThrown();
+        if (thrown != null) {
+            StringWriter trace = new StringWriter();
+            thrown.printStackTrace(new PrintWriter(trace));
+            trace.toString().lines().limit(MAX_TRACE_LINES).forEach(lines::offer);
         }
-
-        String formatted = String.format("[%s %s] [%s] %s", time, levelName, logger, message);
-        
-        if (formatted.length() > MAX_MESSAGE_LENGTH) {
-            formatted = formatted.substring(0, MAX_MESSAGE_LENGTH - 3) + "...";
-        }
-
-        messageQueue.offer(formatted);
     }
 }

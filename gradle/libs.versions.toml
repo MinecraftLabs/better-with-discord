@@ -1,44 +1,48 @@
 [versions]
-loom = "1.14-SNAPSHOT"
-lwjglPlugin = "1.0.1"
-
-java = "8"
+##########################################################################
+# Plugins
+loom = "1.15-SNAPSHOT"
+##########################################################################
+# Java Configuration
+java = "17"
 gradleJava = "21"
-
-bta = "7.3_04"
+##########################################################################
+# Mod Dependencies
+bta = "8.0.1"
 btaChannel = "release"
-loader = "0.18.4-bta.10"
-modMenu = "4.0.0"
-halplibe = "5.3.3"
+loader = "0.18.4-bta.11"
+halplibe = "6.2.0+8.0.1"
 legacyLwjgl = "1.0.6"
-
+##########################################################################
+# Dependencies
 slf4jApi = "2.0.17"
-guava = "33.5.0-jre"
-log4j = "2.20.0"
-gson = "2.13.2"
-commonsLang3 = "3.20.0"
 lwjgl = "3.3.3"
-
-jda = "5.2.2"
-discordWebhooks = "0.8.4"
+joml = "1.10.8"
+jomlPrimitives = "1.10.0"
+jda = "5.6.1"
+betterWithHands = "1.0.3+8.0.1"
+betterWithAether = "1.1.1+8.0.1"
+##########################################################################
 
 [libraries]
 loader = { group = "net.fabricmc", name = "fabric-loader", version.ref = "loader" }
 halplibe = { group = "turniplabs", name = "halplibe", version.ref = "halplibe" }
-modMenu = { group = "turniplabs", name = "modmenu-bta", version.ref = "modMenu" }
 legacyLwjgl = { group = "com.github.Better-than-Adventure", name = "legacy-lwjgl3", version.ref = "legacyLwjgl" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4jApi" }
-guava = { group = "com.google.guava", name = "guava", version.ref = "guava" }
-log4j-slf4j2-impl = { group = "org.apache.logging.log4j", name = "log4j-slf4j2-impl", version.ref = "log4j" }
-log4j-core = { group = "org.apache.logging.log4j", name = "log4j-core", version.ref = "log4j" }
-log4j-api = { group = "org.apache.logging.log4j", name = "log4j-api", version.ref = "log4j" }
-log4j-api12 = { group = "org.apache.logging.log4j", name = "log4j-1.2-api", version.ref = "log4j" }
-gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
-commonsLang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commonsLang3" }
-clientJar = { group = "objects", name = "client", version = "43db9b498cb67058d2e12d394e6507722e71bb45" }
 jda = { group = "net.dv8tion", name = "JDA", version.ref = "jda" }
-discordWebhooks = { group = "club.minnced", name = "discord-webhooks", version.ref = "discordWebhooks" }
+betterWithHands = { group = "maven.modrinth", name = "better-with-hands", version.ref = "betterWithHands" }
+betterWithAether = { group = "maven.modrinth", name = "better-with-aether-bta", version.ref = "betterWithAether" }
+clientJar = { group = "objects", name = "client", version = "43db9b498cb67058d2e12d394e6507722e71bb45" }
+joml = { group = "org.joml", name = "joml", version.ref = "joml" }
+joml-primitives = { group = "org.joml", name = "joml-primitives", version.ref = "jomlPrimitives" }
+lwjgl = { group = "org.lwjgl", name = "lwjgl", version.ref = "lwjgl" }
+lwjgl-glfw = { group = "org.lwjgl", name = "lwjgl-glfw", version.ref = "lwjgl" }
+lwjgl-openal = { group = "org.lwjgl", name = "lwjgl-openal", version.ref = "lwjgl" }
+lwjgl-opengl = { group = "org.lwjgl", name = "lwjgl-opengl", version.ref = "lwjgl" }
+lwjgl-stb = { group = "org.lwjgl", name = "lwjgl-stb", version.ref = "lwjgl" }
+
+[bundles]
+btaLwjgl = [ "lwjgl", "lwjgl-glfw", "lwjgl-openal", "lwjgl-opengl", "lwjgl-stb", "legacyLwjgl" ]
 
 [plugins]
 loom = { id = "net.fabricmc.fabric-loom", version.ref = "loom" }
-lwjgl = { id = "com.smushytaco.lwjgl3", version.ref = "lwjglPlugin" }

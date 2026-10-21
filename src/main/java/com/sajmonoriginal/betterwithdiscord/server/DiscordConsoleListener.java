@@ -1,20 +1,29 @@
 package com.sajmonoriginal.betterwithdiscord.server;
 
-import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
+import net.dv8tion.jda.api.entities.User;
 import net.dv8tion.jda.api.entities.channel.middleman.MessageChannel;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
-import net.minecraft.core.net.command.CommandManager;
-import net.minecraft.core.world.World;
+import net.dv8tion.jda.api.utils.MarkdownUtil;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.server.MinecraftServer;
+import org.jetbrains.annotations.NotNull;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
+import java.util.Locale;
 
 public class DiscordConsoleListener extends ListenerAdapter {
 
     @Override
-    public void onMessageReceived(MessageReceivedEvent event) {
-        if (!BetterWithDiscordConfig.console_enable || !BetterWithDiscordConfig.console_commands_enable) {
+    public void onMessageReceived(@NotNull MessageReceivedEvent event) {
+        if (!BetterWithDiscordConfig.consoleEnabled || !BetterWithDiscordConfig.consoleCommandsEnabled) {
             return;
         }
 
@@ -22,7 +31,7 @@ public class DiscordConsoleListener extends ListenerAdapter {
             return;
         }
 
-        if (!event.getChannel().getId().equals(BetterWithDiscordConfig.console_channel)) {
+        if (!event.getChannel().getId().equals(BetterWithDiscordConfig.consoleChannel)) {
             return;
         }
 
@@ -31,7 +40,7 @@ public class DiscordConsoleListener extends ListenerAdapter {
             return;
         }
 
-        String prefix = BetterWithDiscordConfig.console_command_prefix;
+        String prefix = BetterWithDiscordConfig.consoleCommandPrefix;
         if (!prefix.isEmpty()) {
             if (!message.startsWith(prefix)) {
                 return;
@@ -43,60 +52,57 @@ public class DiscordConsoleListener extends ListenerAdapter {
             return;
         }
 
-        String commandName = message.split(" ")[0].toLowerCase();
+        String commandName = message.split("\\s+")[0].toLowerCase(Locale.ROOT);
         if (commandName.startsWith("/")) {
             commandName = commandName.substring(1);
         }
-        
-        if (BetterWithDiscordConfig.console_command_blacklist.contains(commandName)) {
-            sendResponse(event.getChannel(), "Command `" + commandName + "` is blacklisted.");
+
+        if (BetterWithDiscordConfig.consoleCommandBlacklist.contains(commandName)) {
+            sendResponse(event.getChannel(), "Command " + commandName + " is blacklisted.");
             return;
         }
 
-        executeCommand(message, event.getChannel(), event.getAuthor().getName());
+        if (!BetterWithDiscordConfig.consoleAllowedCommands.isEmpty() && !BetterWithDiscordConfig.consoleAllowedCommands.contains(commandName)) {
+            sendResponse(event.getChannel(), "Command " + commandName + " is not allowed.");
+            return;
+        }
+
+        if (!logCommand(event.getAuthor(), message)) {
+            sendResponse(event.getChannel(), "Command was not run because it could not be logged.");
+            return;
+        }
+
+        executeCommand(message, event.getAuthor().getName());
     }
 
-    private void executeCommand(String command, MessageChannel responseChannel, String executor) {
+    private void executeCommand(String command, String executor) {
         if (command.startsWith("/")) {
             command = command.substring(1);
         }
 
-        BetterWithDiscordMod.LOGGER.info("[Discord Console] {} executed: {}", executor, command);
-
         MinecraftServer server = MinecraftServer.getInstance();
         if (server == null) {
-            sendResponse(responseChannel, "Server is not running.");
             return;
         }
 
-        World world = server.getDimensionWorld(0);
-        if (world == null) {
-            sendResponse(responseChannel, "World not loaded.");
-            return;
-        }
+        BetterWithDiscordMod.LOGGER.info("[Discord Console] {} executed: {}", executor, command);
+        server.addCommand(command, server);
+    }
 
-        CommandManager commandManager = world.getCommandManager();
-        if (commandManager == null) {
-            sendResponse(responseChannel, "Command system not available.");
-            return;
-        }
-
-        String finalCommand = command;
+    private boolean logCommand(User author, String command) {
+        Path log = FabricLoader.getInstance().getGameDir().resolve("logs").resolve(BetterWithDiscordMod.MOD_ID + "-commands.log");
+        String line = "[" + Instant.now() + "] " + author.getName() + " (" + author.getId() + "): " + command.replaceAll("\\R", " ") + System.lineSeparator();
         try {
-            DiscordCommandSource source = new DiscordCommandSource(responseChannel, executor);
-            commandManager.execute(finalCommand, source);
-        } catch (CommandSyntaxException e) {
-            sendResponse(responseChannel, "Error: " + e.getMessage());
-        } catch (Exception e) {
-            BetterWithDiscordMod.LOGGER.error("Error executing command from Discord: {}", finalCommand, e);
-            sendResponse(responseChannel, "Error: " + e.getMessage());
+            Files.createDirectories(log.getParent());
+            Files.writeString(log, line, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            return true;
+        } catch (IOException e) {
+            BetterWithDiscordMod.LOGGER.error("Could not write {}", log, e);
+            return false;
         }
     }
 
     private void sendResponse(MessageChannel channel, String message) {
-        try {
-            channel.sendMessage("```\n" + message + "\n```").queue();
-        } catch (Exception ignored) {
-        }
+        channel.sendMessage(MarkdownUtil.codeblock(message)).queue();
     }
 }

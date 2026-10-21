@@ -1,99 +1,356 @@
 package com.sajmonoriginal.betterwithdiscord.server;
 
-import club.minnced.discord.webhook.external.JDAWebhookClient;
-import club.minnced.discord.webhook.send.WebhookEmbed;
-import club.minnced.discord.webhook.send.WebhookEmbedBuilder;
-import club.minnced.discord.webhook.send.WebhookMessageBuilder;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
-import net.minecraft.server.MinecraftServer;
+import com.sajmonoriginal.betterwithdiscord.image.GameImages;
+import com.sajmonoriginal.betterwithdiscord.image.InventorySnapshot;
+import com.sajmonoriginal.betterwithdiscord.image.ItemSnapshot;
+import com.sajmonoriginal.betterwithdiscord.preview.DiscordImages;
+import com.sajmonoriginal.betterwithdiscord.preview.MapPreviews;
+import com.sajmonoriginal.betterwithdiscord.preview.PreviewCommand;
+import net.dv8tion.jda.api.EmbedBuilder;
+import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.MessageEmbed;
+import net.dv8tion.jda.api.entities.Webhook;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
+import net.dv8tion.jda.api.requests.restaction.WebhookMessageCreateAction;
+import net.dv8tion.jda.api.utils.FileUpload;
+import net.minecraft.core.entity.player.Player;
+import net.minecraft.core.item.ItemStack;
+import net.minecraft.core.lang.I18n;
+import net.minecraft.core.net.ChatEmotes;
 import net.minecraft.core.net.command.TextFormatting;
+import net.minecraft.core.util.helper.NetCharacters;
+import net.minecraft.server.MinecraftServer;
+
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class DiscordChatRelay {
+    private static final int MAX_LINE_LENGTH = 256;
+    private static final int MAX_LINES = 10;
+    private static final Pattern ITEM_PLACEHOLDER = Pattern.compile("(?i)\\[(item|i)]");
+    private static final String TOOLTIP_FILE = "tooltip.png";
+    private static final String ICON_FILE = "icon.png";
+    private static final String INVENTORY_FILE = "inventory.png";
+    private static final int INVENTORY_COLOR = 0x5ed2ff;
+    private static final Pattern INVENTORY_PLACEHOLDER = Pattern.compile("(?i)\\[(inv|inventory)]");
+    private static final ExecutorService CHAT = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "Better With Discord chat");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static final int MAX_NAME_LENGTH = 80;
+    private static final List<String> RESERVED_NAMES = List.of("clyde", "discord");
+    private static final String HEADS = "https://www.mc-heads.net/head/";
+    private static final long STOP_TIMEOUT_SECONDS = 5;
 
-    private static final JDAWebhookClient webhookClient = DiscordClient.getWebhook();
-
-    public static void sendToMinecraft(String author, String message) {
+    public static void sendToMinecraft(String author, String message, List<DiscordImages.Entry> images) {
         MinecraftServer server = MinecraftServer.getInstance();
-        message = "[" + TextFormatting.PURPLE + "DISCORD" + TextFormatting.RESET + "] <" + author + "> " + message;
-        BetterWithDiscordMod.info(message);
-        String[] lines = message.split("\n");
-        for (String chatMessage : lines) {
-            server.playerList.sendEncryptedChatToAllPlayers(chatMessage);
+        String prefix = "[" + TextFormatting.PURPLE + "DISCORD" + TextFormatting.RESET + "] <" + clean(author) + "> ";
+        List<String> raw = new ArrayList<>();
+        for (String line : message.split("\n")) {
+            String text = clean(line).strip();
+            if (text.isEmpty()) {
+                continue;
+            }
+            if (text.length() > MAX_LINE_LENGTH) {
+                text = text.substring(0, MAX_LINE_LENGTH);
+            }
+            raw.add(ChatEmotes.process(text));
+        }
+        List<String> lines = new ArrayList<>();
+        for (String line : DiscordMarkdown.toGame(raw)) {
+            if (lines.size() == MAX_LINES) {
+                break;
+            }
+            lines.add(line);
+        }
+        if (!images.isEmpty()) {
+            StringBuilder links = new StringBuilder();
+            for (DiscordImages.Entry image : images) {
+                if (!links.isEmpty()) {
+                    links.append(' ');
+                }
+                links.append(imageLink(image));
+            }
+            if (lines.isEmpty()) {
+                lines.add(links.toString());
+            } else {
+                lines.set(lines.size() - 1, lines.get(lines.size() - 1) + " " + links);
+            }
+        }
+        for (String line : lines) {
+            String chat = prefix + line;
+            BetterWithDiscordMod.LOGGER.info(chat);
+            server.playerList.sendEncryptedChatToAllPlayers(chat);
         }
     }
 
-    public static void sendToDiscord(String author, String message) {
-        if (webhookClient == null) return;
-        WebhookMessageBuilder builder = new WebhookMessageBuilder();
-        builder.setUsername(author);
-        builder.setAvatarUrl("https://www.mc-heads.net/head/" + author + "/" + "150");
-        builder.setContent(message);
-        webhookClient.send(builder.build());
+    private static String imageLink(DiscordImages.Entry image) {
+        String link = "[" + TextFormatting.LIGHT_BLUE + image.name() + TextFormatting.RESET + "]";
+        if (!MapPreviews.enabled()) {
+            return link;
+        }
+        return link + " " + TextFormatting.LIGHT_GRAY + "/" + PreviewCommand.NAME + " " + image.id() + TextFormatting.RESET;
     }
 
-    public static void sendJoinLeaveMessage(String username, boolean joined) {
-        if (webhookClient == null) return;
-        String avatarUrl = "https://www.mc-heads.net/head/" + username;
-        String joinLeaveText = username + (joined ? " joined" : " left") + " the server";
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+    static String clean(String text) {
+        StringBuilder cleaned = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c != TextFormatting.SPECIAL_CHAR && NetCharacters.isAllowed(c)) {
+                cleaned.append(c);
+            }
+        }
+        return cleaned.toString();
+    }
+
+    public static String relayChat(Player player, String message) {
+        try {
+            return relay(player, message);
+        } catch (RuntimeException e) {
+            BetterWithDiscordMod.LOGGER.warn("Could not relay the chat message of {}", player.username, e);
+            return message;
+        }
+    }
+
+    private static String relay(Player player, String message) {
+        String inGame = DiscordMarkdown.line(message);
+        String toDiscord = message;
+        ItemSnapshot item = null;
+        ItemStack held = player.inventory.getCurrentItem();
+        if (held != null && ITEM_PLACEHOLDER.matcher(message).find()) {
+            item = ItemSnapshot.of(held, player.world);
+            String count = item.count() > 1 ? " x" + item.count() : "";
+            inGame = replace(ITEM_PLACEHOLDER, inGame,
+                "[" + TextFormatting.get(item.colorIndex()) + item.name() + count + TextFormatting.RESET + TextFormatting.WHITE + "]");
+            toDiscord = replace(ITEM_PLACEHOLDER, toDiscord, "[" + item.name() + count + "]");
+        }
+        InventorySnapshot inventory = null;
+        if (INVENTORY_PLACEHOLDER.matcher(message).find()) {
+            inventory = InventorySnapshot.of(player);
+            String title = inventory.playerName() + "'s Inventory";
+            inGame = replace(INVENTORY_PLACEHOLDER, inGame, "[" + TextFormatting.LIGHT_BLUE + title + TextFormatting.RESET + TextFormatting.WHITE + "]");
+            toDiscord = replace(INVENTORY_PLACEHOLDER, toDiscord, "[" + title + "]");
+        }
+        sendToDiscord(player, toDiscord, item, inventory);
+        return inGame;
+    }
+
+    private static String replace(Pattern placeholder, String text, String replacement) {
+        return placeholder.matcher(text).replaceAll(Matcher.quoteReplacement(replacement));
+    }
+
+    private static void sendToDiscord(Player player, String message, ItemSnapshot item, InventorySnapshot inventory) {
+        String content = TextFormatting.removeAllFormatting(message);
+        String name = webhookName(TextFormatting.removeAllFormatting(player.getDisplayName()));
+        String avatar = HEADS + player.username;
+        execute(() -> {
+            List<MessageEmbed> embeds = new ArrayList<>();
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            GameImages images = GameImages.get();
+            if (images != null && item != null) {
+                try {
+                    byte[] icon = images.icon(item);
+                    files.put(TOOLTIP_FILE, images.tooltip(item));
+                    if (icon != null) {
+                        files.put(ICON_FILE, icon);
+                    }
+                    embeds.add(itemEmbed(name, avatar, item, images.color(item.colorIndex()), icon != null));
+                } catch (RuntimeException e) {
+                    BetterWithDiscordMod.LOGGER.warn("Could not draw the picture of {}", item.name(), e);
+                }
+            }
+            if (images != null && inventory != null) {
+                try {
+                    files.put(INVENTORY_FILE, images.inventory(inventory));
+                    embeds.add(new EmbedBuilder()
+                            .setColor(INVENTORY_COLOR)
+                            .setAuthor(limit(inventory.playerName() + "'s Inventory", MessageEmbed.AUTHOR_MAX_LENGTH), null, avatar)
+                            .setImage("attachment://" + INVENTORY_FILE)
+                            .build());
+                } catch (RuntimeException e) {
+                    BetterWithDiscordMod.LOGGER.warn("Could not draw the inventory of {}", inventory.playerName(), e);
+                }
+            }
+            DiscordMentions.Resolved mentions = DiscordMentions.resolve(content, DiscordClient.guild());
+            send(webhook -> {
+                WebhookMessageCreateAction<Message> action = webhook.sendMessage(mentions.content())
+                        .setUsername(name)
+                        .setAvatarUrl(avatar)
+                        .mention(mentions.mentions());
+                if (!embeds.isEmpty()) {
+                    action.addEmbeds(embeds);
+                    files.forEach((file, data) -> action.addFiles(FileUpload.fromData(data, file)));
+                }
+                return action;
+            });
+        });
+    }
+
+    private static MessageEmbed itemEmbed(String player, String avatar, ItemSnapshot item, int color, boolean withIcon) {
+        EmbedBuilder embed = new EmbedBuilder()
+                .setColor(color)
+                .setAuthor(limit(player + "'s Item", MessageEmbed.AUTHOR_MAX_LENGTH), null, avatar)
+                .setTitle(limit(item.name() + (item.count() > 1 ? " x" + item.count() : ""), MessageEmbed.TITLE_MAX_LENGTH))
+                .setImage("attachment://" + TOOLTIP_FILE);
+        if (withIcon) {
+            embed.setThumbnail("attachment://" + ICON_FILE);
+        }
+        return embed.build();
+    }
+
+    public static void sendJoinLeaveMessage(Player player, boolean joined) {
+        String name = TextFormatting.removeAllFormatting(player.getDisplayName()) + (joined ? " joined" : " left") + " the server";
+        String avatar = HEADS + player.username;
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(joined ? 0x00FF00 : 0xFF0000)
-                .setAuthor(new WebhookEmbed.EmbedAuthor(joinLeaveText, avatarUrl, null))
-                .build();
-        sendMessage(null, embed);
+                .setAuthor(limit(name, MessageEmbed.AUTHOR_MAX_LENGTH), null, avatar)
+                .build());
     }
 
-    public static void sendDeathMessage(String deathMessage) {
-        if (webhookClient == null) return;
-        String avatarUrl = "https://i.imgur.com/l1EJ6fx.png";
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+    public static void sendDeathMessage(String key, String[] args) {
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setAuthor(new WebhookEmbed.EmbedAuthor(deathMessage, avatarUrl, null))
-                .build();
-        sendMessage(null, embed);
+                .setAuthor(limit(TextFormatting.removeAllFormatting(I18n.getInstance().translateKeyAndFormat(key, (Object[]) args)),
+                        MessageEmbed.AUTHOR_MAX_LENGTH), null, "https://i.imgur.com/l1EJ6fx.png")
+                .build());
     }
 
     public static void sendServerStartMessage() {
-        if (webhookClient == null) return;
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0x4ae485)
-                .setAuthor(new WebhookEmbed.EmbedAuthor("Server started!", null, null))
+                .setAuthor("Server started!")
                 .setTimestamp(Instant.now())
-                .build();
-        sendMessage(null, embed);
+                .build());
     }
 
     public static void sendServerStoppedMessage() {
-        if (webhookClient == null) return;
-        WebhookEmbed embed = new WebhookEmbedBuilder()
-                .setColor(0xf92f60)
-                .setAuthor(new WebhookEmbed.EmbedAuthor("Server stopped!", null, null))
+        Future<?> stopped = CHAT.submit(() -> {
+            Webhook webhook = DiscordClient.webhook;
+            if (webhook == null) {
+                return;
+            }
+            try {
+                serverMessage(webhook.sendMessageEmbeds(new EmbedBuilder()
+                        .setColor(0xf92f60)
+                        .setAuthor("Server stopped!")
+                        .setTimestamp(Instant.now())
+                        .build()))
+                        .submit()
+                        .get(STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException e) {
+                BetterWithDiscordMod.LOGGER.warn("Could not send the stop message to Discord", e);
+            }
+        });
+        CHAT.shutdown();
+        try {
+            stopped.get(STOP_TIMEOUT_SECONDS * 2, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            BetterWithDiscordMod.LOGGER.warn("Discord messages were still being sent when the server stopped", e);
+        }
+    }
+
+    public static void sendServerFrozenMessage(int seconds) {
+        sendEmbed(() -> new EmbedBuilder()
+                .setColor(0xf9a62f)
+                .setAuthor("The server has not responded for " + seconds + " seconds")
                 .setTimestamp(Instant.now())
-                .build();
-        sendMessage(null, embed);
+                .build());
+    }
+
+    public static void sendServerRecoveredMessage() {
+        sendEmbed(() -> new EmbedBuilder()
+                .setColor(0x4ae485)
+                .setAuthor("The server is responding again")
+                .setTimestamp(Instant.now())
+                .build());
     }
 
     public static void sendServerSleepMessage() {
-        if (webhookClient == null) return;
-        WebhookEmbed embed = new WebhookEmbedBuilder()
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0x222d5a)
-                .setAuthor(new WebhookEmbed.EmbedAuthor("The Night was Skipped", "https://i.imgur.com/R1e1sJS.png", null))
-                .build();
-        sendMessage(null, embed);
+                .setAuthor("The Night was Skipped", null, "https://i.imgur.com/R1e1sJS.png")
+                .build());
     }
 
-    public static void sendMessage(String content, WebhookEmbed embed) {
-        if (webhookClient == null) return;
-        WebhookMessageBuilder builder = new WebhookMessageBuilder();
-        builder.setUsername(BetterWithDiscordConfig.discord_servername);
-        builder.setAvatarUrl(BetterWithDiscordConfig.discord_serverpfp_url);
-        if (content != null && !content.isEmpty()) {
-            builder.setContent(content);
+    private static void sendEmbed(Supplier<MessageEmbed> embed) {
+        execute(() -> send(webhook -> serverMessage(webhook.sendMessageEmbeds(embed.get()))));
+    }
+
+    private static WebhookMessageCreateAction<Message> serverMessage(WebhookMessageCreateAction<Message> action) {
+        return action.setUsername(webhookName(BetterWithDiscordConfig.serverName)).setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl);
+    }
+
+    private static void execute(Runnable task) {
+        try {
+            CHAT.execute(() -> {
+                try {
+                    task.run();
+                } catch (RuntimeException e) {
+                    BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", e);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            BetterWithDiscordMod.LOGGER.debug("Dropped a Discord message after the server stopped", e);
         }
-        if (embed != null) {
-            builder.addEmbeds(embed);
+    }
+
+    static String limit(String text, int length) {
+        return text.length() > length ? text.substring(0, length) : text;
+    }
+
+    private static String webhookName(String name) {
+        StringBuilder allowed = new StringBuilder(name.trim());
+        for (String reserved : RESERVED_NAMES) {
+            int at = allowed.toString().toLowerCase(Locale.ROOT).indexOf(reserved);
+            while (at >= 0) {
+                allowed.insert(at + 1, '-');
+                at = allowed.toString().toLowerCase(Locale.ROOT).indexOf(reserved, at + 1);
+            }
         }
-        webhookClient.send(builder.build());
+        if (allowed.isEmpty()) {
+            return "Player";
+        }
+        return limit(allowed.toString(), MAX_NAME_LENGTH);
+    }
+
+    private static void send(Function<Webhook, WebhookMessageCreateAction<Message>> message) {
+        Webhook webhook = DiscordClient.webhook;
+        if (webhook == null) return;
+        message.apply(webhook).queue(null, error -> {
+            if (error instanceof ErrorResponseException response && response.getErrorResponse() == ErrorResponse.UNKNOWN_WEBHOOK) {
+                DiscordClient.replaceWebhook(webhook).whenComplete((replacement, failure) -> {
+                    if (failure != null) {
+                        BetterWithDiscordMod.LOGGER.warn("Could not create a new chat webhook", failure);
+                    } else {
+                        message.apply(replacement).queue(null, retry -> BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", retry));
+                    }
+                });
+            } else {
+                BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", error);
+            }
+        });
     }
 }
