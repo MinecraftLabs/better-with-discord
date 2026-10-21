@@ -53,7 +53,8 @@ public final class PlayerListRenderer {
             int y = listTop + row * (8 + GAP);
             canvas.fill(x - 2, y - 2, x + columnWidth + 2, y + 10, CELL_BORDER);
             canvas.fill(x - 1, y - 1, x + columnWidth + 1, y + 9, BACKGROUND);
-            drawHead(canvas, skins.skin(player.uuid()), x, y);
+            PlayerSkins.Skin skin = skins.skin(player.uuid());
+            drawHead(canvas, skin == null ? null : skin.image(), x, y);
             font.draw(canvas, player.name(), x + HEAD + HEAD_GAP, y, 0xFFFFFFFF, true);
             font.draw(canvas, TextFormatting.YELLOW + player.score(), x + columnWidth - width(player.score()), y, 0xFFFFFFFF, true);
         }

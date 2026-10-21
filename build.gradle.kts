@@ -27,6 +27,10 @@ repositories {
     maven("https://maven.thesignalumproject.net/infrastructure") { name = "SignalumMavenInfrastructure" }
     maven("https://maven.thesignalumproject.net/releases") { name = "SignalumMavenReleases" }
     maven("https://maven.thesignalumproject.net/nightly") { name = "SignalumMavenNightly" }
+    maven("https://api.modrinth.com/maven") {
+        name = "Modrinth"
+        content { includeGroup("maven.modrinth") }
+    }
     ivy("https://piston-data.mojang.com") {
         patternLayout { artifact("v1/[organisation]/[revision]/[module].jar") }
         metadataSources { artifact() }
@@ -56,6 +60,8 @@ dependencies {
     compileOnly(libs.joml)
     compileOnly(libs.joml.primitives)
     compileOnly(libs.slf4jApi)
+    compileOnly(libs.betterWithHands) { isTransitive = false }
+    compileOnly(libs.betterWithAether) { isTransitive = false }
 
     runtimeClasspath(libs.clientJar)
     val lwjglVer = libs.versions.lwjgl.get()

@@ -10,13 +10,22 @@ import net.minecraft.core.world.World;
 import java.util.ArrayList;
 import java.util.List;
 
-public record ItemSnapshot(String tooltip, String name, int colorIndex, int count, List<String> icons, Block<?> block, int meta) {
+public record ItemSnapshot(String tooltip, String name, int colorIndex, int count, List<String> icons, Block<?> block, int meta,
+                           int durabilityWidth, int durabilityProgress, ContainerSnapshot container) {
 
     public static ItemSnapshot of(ItemStack stack) {
         return of(stack, null);
     }
 
     public static ItemSnapshot of(ItemStack stack, World world) {
+        return of(stack, world, true);
+    }
+
+    static ItemSnapshot contained(ItemStack stack, World world) {
+        return of(stack, world, false);
+    }
+
+    private static ItemSnapshot of(ItemStack stack, World world, boolean withContents) {
         StringBuilder text = new StringBuilder();
         text.append(TextFormatting.get(stack.getDisplayColor())).append(stack.getDisplayName()).append(TextFormatting.RESET);
         if (stack.getData().containsKey("tileEntityData")) {
@@ -37,8 +46,14 @@ public record ItemSnapshot(String tooltip, String name, int colorIndex, int coun
             icons.add(item.namespaceID.namespace() + ":item/" + item.getKey().substring(item.getKey().indexOf('.') + 1).replace('.', '_'));
         }
         Block<?> block = item instanceof ItemBlock<?> itemBlock ? itemBlock.getBlock() : null;
+        int durabilityWidth = -1;
+        int durabilityProgress = -1;
+        if ((stack.isItemDamaged() || item.showFullDurability()) && stack.getMaxDamage() > 0) {
+            durabilityWidth = (int) Math.round(13.0 - stack.getItemDamageForDisplay() * 13.0 / stack.getMaxDamage());
+            durabilityProgress = (int) Math.round(255.0 - stack.getItemDamageForDisplay() * 255.0 / stack.getMaxDamage());
+        }
         return new ItemSnapshot(text.toString(), TextFormatting.removeAllFormatting(stack.getDisplayName()), stack.getDisplayColor(), stack.stackSize, List.copyOf(icons),
-                block, stack.getMetadata());
+                block, stack.getMetadata(), durabilityWidth, durabilityProgress, withContents ? ContainerSnapshot.of(stack, world) : null);
     }
 
     private static String formatDescription(String description) {

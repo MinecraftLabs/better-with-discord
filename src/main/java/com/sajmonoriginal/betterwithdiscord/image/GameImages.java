@@ -2,6 +2,7 @@ package com.sajmonoriginal.betterwithdiscord.image;
 
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.image.block.BlockIcons;
+import com.sajmonoriginal.betterwithdiscord.image.entity.EntityGeometries;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -21,13 +22,20 @@ public final class GameImages {
     private final TooltipRenderer tooltips;
     private final PlayerListRenderer playerList;
     private final BlockIcons blocks;
+    private final InventoryRenderer inventories;
+    private final ContainerRenderer containers;
 
     private GameImages(ClientAssets assets, BtaFont font, TooltipRenderer tooltips) {
         this.assets = assets;
         this.font = font;
         this.tooltips = tooltips;
-        this.playerList = new PlayerListRenderer(font, new PlayerSkins(assets));
+        PlayerSkins skins = new PlayerSkins(assets);
+        this.playerList = new PlayerListRenderer(font, skins);
         this.blocks = new BlockIcons(assets);
+        SlotRenderer slots = new SlotRenderer(font, item -> iconImage(item, Canvas.SCALE), assets::texture);
+        this.containers = new ContainerRenderer(assets, font, slots);
+        PlayerModelRenderer players = new PlayerModelRenderer(assets, new EntityGeometries(assets));
+        this.inventories = new InventoryRenderer(assets, skins, players, slots, containers);
     }
 
     public static void load(Path cacheDir, String tooltipStyle) {
@@ -62,25 +70,35 @@ public final class GameImages {
     }
 
     public byte[] tooltip(ItemSnapshot item) {
-        return png(tooltips.render(item.tooltip()));
+        BufferedImage below = item.container() == null ? null : containers.render(item.container());
+        return png(tooltips.render(item.tooltip(), below));
     }
 
     public byte[] playerList(List<PlayerListRenderer.Entry> players, int maxPlayers) {
         return png(playerList.render(players, maxPlayers));
     }
 
+    public byte[] inventory(InventorySnapshot inventory) {
+        return png(inventories.render(inventory));
+    }
+
     public byte[] icon(ItemSnapshot item) {
-        if (item.block() != null) {
-            BufferedImage block = blocks.icon(item.block(), item.meta(), ICON_SCALE);
-            if (block != null) {
-                return png(block.getWidth() < 16 * ICON_SCALE ? Canvas.upscale(block, 16 * ICON_SCALE / block.getWidth()) : block);
-            }
+        BufferedImage icon = iconImage(item, ICON_SCALE);
+        if (icon == null) {
             return null;
+        }
+        int size = 16 * ICON_SCALE;
+        return png(icon.getWidth() < size ? Canvas.upscale(icon, Math.max(1, size / icon.getWidth())) : icon);
+    }
+
+    private BufferedImage iconImage(ItemSnapshot item, int scale) {
+        if (item.block() != null) {
+            return blocks.icon(item.block(), item.meta(), scale);
         }
         for (String icon : item.icons()) {
             BufferedImage texture = assets.texture(icon);
             if (texture != null) {
-                return png(Canvas.upscale(texture, ICON_SCALE));
+                return texture;
             }
         }
         return null;

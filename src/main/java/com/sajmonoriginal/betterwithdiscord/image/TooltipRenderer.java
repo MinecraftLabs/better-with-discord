@@ -11,6 +11,7 @@ import java.util.List;
 
 public final class TooltipRenderer {
     private static final int DEFAULT_PADDING = 3;
+    private static final int BELOW_GAP = 4;
 
     private final BtaFont font;
     private final GuiSprite inner;
@@ -62,9 +63,17 @@ public final class TooltipRenderer {
     }
 
     public BufferedImage render(String tooltip) {
+        return render(tooltip, null);
+    }
+
+    public BufferedImage render(String tooltip, BufferedImage below) {
         List<String> lines = BtaFont.lines(tooltip);
-        int width = Math.max(0, (int) Math.ceil(font.measure(lines)) - 1);
-        int height = Math.max(0, lines.size() * BtaFont.LINE_HEIGHT - 1);
+        int textWidth = Math.max(0, (int) Math.ceil(font.measure(lines)) - 1);
+        int textHeight = Math.max(0, lines.size() * BtaFont.LINE_HEIGHT - 1);
+        int belowWidth = below == null ? 0 : below.getWidth() / Canvas.SCALE;
+        int belowHeight = below == null ? 0 : below.getHeight() / Canvas.SCALE;
+        int width = Math.max(textWidth, belowWidth);
+        int height = below == null ? textHeight : textHeight + BELOW_GAP + belowHeight;
         int textX = 2 + paddingLeft;
         int textY = 2 + paddingTop;
         Canvas canvas = new Canvas(width + 4 + paddingLeft + paddingRight, height + 4 + paddingTop + paddingBottom);
@@ -75,6 +84,10 @@ public final class TooltipRenderer {
             border.draw(canvas, 0, 0, width + 4 + paddingLeft + paddingRight, height + 4 + paddingTop + paddingBottom);
         }
         font.drawLines(canvas, lines, textX, textY, 0xFFFFFFFF, false);
+        if (below != null) {
+            int belowY = textY + textHeight + BELOW_GAP;
+            canvas.drawTexture(below, 0, 0, below.getWidth(), below.getHeight(), textX, belowY, textX + belowWidth, belowY + belowHeight);
+        }
         return canvas.toImage();
     }
 }

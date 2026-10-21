@@ -20,6 +20,8 @@ lwjgl = "3.3.3"
 joml = "1.10.8"
 jomlPrimitives = "1.10.0"
 jda = "5.6.1"
+betterWithHands = "1.0.3+8.0.1"
+betterWithAether = "1.1.1+8.0.1"
 ##########################################################################
 
 [libraries]
@@ -28,6 +30,8 @@ halplibe = { group = "turniplabs", name = "halplibe", version.ref = "halplibe" }
 legacyLwjgl = { group = "com.github.Better-than-Adventure", name = "legacy-lwjgl3", version.ref = "legacyLwjgl" }
 slf4jApi = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4jApi" }
 jda = { group = "net.dv8tion", name = "JDA", version.ref = "jda" }
+betterWithHands = { group = "maven.modrinth", name = "better-with-hands", version.ref = "betterWithHands" }
+betterWithAether = { group = "maven.modrinth", name = "better-with-aether-bta", version.ref = "betterWithAether" }
 clientJar = { group = "objects", name = "client", version = "43db9b498cb67058d2e12d394e6507722e71bb45" }
 joml = { group = "org.joml", name = "joml", version.ref = "joml" }
 joml-primitives = { group = "org.joml", name = "joml-primitives", version.ref = "jomlPrimitives" }

@@ -3,6 +3,7 @@ package com.sajmonoriginal.betterwithdiscord.server;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import com.sajmonoriginal.betterwithdiscord.image.GameImages;
+import com.sajmonoriginal.betterwithdiscord.image.InventorySnapshot;
 import com.sajmonoriginal.betterwithdiscord.image.ItemSnapshot;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Message;
@@ -21,9 +22,12 @@ import net.minecraft.core.util.helper.NetCharacters;
 import net.minecraft.server.MinecraftServer;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -39,6 +43,9 @@ public class DiscordChatRelay {
     private static final Pattern ITEM_PLACEHOLDER = Pattern.compile("(?i)\\[(item|i)]");
     private static final String TOOLTIP_FILE = "tooltip.png";
     private static final String ICON_FILE = "icon.png";
+    private static final String INVENTORY_FILE = "inventory.png";
+    private static final int INVENTORY_COLOR = 0x5ed2ff;
+    private static final Pattern INVENTORY_PLACEHOLDER = Pattern.compile("(?i)\\[(inv|inventory)]");
     private static final ExecutorService CHAT = Executors.newSingleThreadExecutor(task -> {
         Thread thread = new Thread(task, "Better With Discord chat");
         thread.setDaemon(true);
@@ -80,51 +87,72 @@ public class DiscordChatRelay {
     }
 
     public static String relayChat(Player player, String message) {
-        Matcher placeholder = ITEM_PLACEHOLDER.matcher(message);
+        String inGame = message;
+        String toDiscord = message;
+        ItemSnapshot item = null;
         ItemStack held = player.inventory.getCurrentItem();
-        if (held == null || !placeholder.find()) {
-            sendToDiscord(player, message, null);
-            return message;
+        if (held != null && ITEM_PLACEHOLDER.matcher(message).find()) {
+            item = ItemSnapshot.of(held, player.world);
+            String count = item.count() > 1 ? " x" + item.count() : "";
+            inGame = replace(ITEM_PLACEHOLDER, inGame,
+                "[" + TextFormatting.get(item.colorIndex()) + item.name() + count + TextFormatting.RESET + TextFormatting.WHITE + "]");
+            toDiscord = replace(ITEM_PLACEHOLDER, toDiscord, "[" + item.name() + count + "]");
         }
-
-        ItemSnapshot item = ItemSnapshot.of(held, player.world);
-        String count = item.count() > 1 ? " x" + item.count() : "";
-        String inGame = "[" + TextFormatting.get(item.colorIndex()) + item.name() + count + TextFormatting.RESET + TextFormatting.WHITE + "]";
-        sendToDiscord(player, placeholder.replaceAll(Matcher.quoteReplacement("[" + item.name() + count + "]")), item);
-        return placeholder.replaceAll(Matcher.quoteReplacement(inGame));
+        InventorySnapshot inventory = null;
+        if (INVENTORY_PLACEHOLDER.matcher(message).find()) {
+            inventory = InventorySnapshot.of(player);
+            String title = inventory.playerName() + "'s Inventory";
+            inGame = replace(INVENTORY_PLACEHOLDER, inGame, "[" + TextFormatting.LIGHT_BLUE + title + TextFormatting.RESET + TextFormatting.WHITE + "]");
+            toDiscord = replace(INVENTORY_PLACEHOLDER, toDiscord, "[" + title + "]");
+        }
+        sendToDiscord(player, toDiscord, item, inventory);
+        return inGame;
     }
 
-    private static void sendToDiscord(Player player, String message, ItemSnapshot item) {
+    private static String replace(Pattern placeholder, String text, String replacement) {
+        return placeholder.matcher(text).replaceAll(Matcher.quoteReplacement(replacement));
+    }
+
+    private static void sendToDiscord(Player player, String message, ItemSnapshot item, InventorySnapshot inventory) {
         String content = MarkdownSanitizer.escape(TextFormatting.removeAllFormatting(message));
         String name = webhookName(TextFormatting.removeAllFormatting(player.getDisplayName()));
         String avatar = "https://www.mc-heads.net/head/" + player.username + "/150";
         CHAT.execute(() -> {
-            GameImages images = item == null ? null : GameImages.get();
-            MessageEmbed embed = null;
-            byte[] tooltip = null;
-            byte[] icon = null;
-            if (images != null) {
+            List<MessageEmbed> embeds = new ArrayList<>();
+            Map<String, byte[]> files = new LinkedHashMap<>();
+            GameImages images = GameImages.get();
+            if (images != null && item != null) {
                 try {
-                    tooltip = images.tooltip(item);
-                    icon = images.icon(item);
-                    embed = itemEmbed(name, avatar, item, images.color(item.colorIndex()), icon != null);
+                    byte[] icon = images.icon(item);
+                    files.put(TOOLTIP_FILE, images.tooltip(item));
+                    if (icon != null) {
+                        files.put(ICON_FILE, icon);
+                    }
+                    embeds.add(itemEmbed(name, avatar, item, images.color(item.colorIndex()), icon != null));
                 } catch (RuntimeException e) {
                     BetterWithDiscordMod.LOGGER.warn("Could not draw the picture of {}", item.name(), e);
                 }
             }
-            MessageEmbed itemEmbed = embed;
-            byte[] tooltipPng = tooltip;
-            byte[] iconPng = icon;
+            if (images != null && inventory != null) {
+                try {
+                    files.put(INVENTORY_FILE, images.inventory(inventory));
+                    embeds.add(new EmbedBuilder()
+                            .setColor(INVENTORY_COLOR)
+                            .setAuthor(inventory.playerName() + "'s Inventory", null, avatar)
+                            .setImage("attachment://" + INVENTORY_FILE)
+                            .build());
+                } catch (RuntimeException e) {
+                    BetterWithDiscordMod.LOGGER.warn("Could not draw the inventory of {}", inventory.playerName(), e);
+                }
+            }
             send(webhook -> {
                 WebhookMessageCreateAction<Message> action = webhook.sendMessage(content)
                         .setUsername(name)
                         .setAvatarUrl(avatar)
                         .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
-                if (itemEmbed != null) {
-                    action.addEmbeds(itemEmbed).addFiles(FileUpload.fromData(tooltipPng, TOOLTIP_FILE));
-                    if (iconPng != null) {
-                        action.addFiles(FileUpload.fromData(iconPng, ICON_FILE));
-                    }
+                if (!embeds.isEmpty()) {
+                    action.addEmbeds(embeds);
+                    files.forEach((file, data) -> action.addFiles(FileUpload.fromData(data, file)));
                 }
                 return action;
             });

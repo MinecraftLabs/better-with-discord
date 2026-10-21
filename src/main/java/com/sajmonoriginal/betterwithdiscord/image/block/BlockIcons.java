@@ -2,6 +2,7 @@ package com.sajmonoriginal.betterwithdiscord.image.block;
 
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.image.ClientAssets;
+import com.sajmonoriginal.betterwithdiscord.image.Raster;
 import com.sajmonoriginal.betterwithdiscord.image.block.kind.ModKinds;
 import com.sajmonoriginal.betterwithdiscord.image.block.kind.ModelKind;
 import com.sajmonoriginal.betterwithdiscord.image.block.kind.ModelKinds;
@@ -97,7 +98,7 @@ public final class BlockIcons {
         BufferedImage result = new BufferedImage(texture.getWidth(), texture.getHeight(), BufferedImage.TYPE_INT_ARGB);
         for (int y = 0; y < texture.getHeight(); y++) {
             for (int x = 0; x < texture.getWidth(); x++) {
-                result.setRGB(x, y, IconRasterizer.tint(texture.getRGB(x, y), tint, mask, x, y, texture));
+                result.setRGB(x, y, Raster.tint(texture.getRGB(x, y), tint, mask, x, y, texture));
             }
         }
         return result;
