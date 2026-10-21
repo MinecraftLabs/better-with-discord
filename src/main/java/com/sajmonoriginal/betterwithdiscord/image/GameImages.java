@@ -24,6 +24,7 @@ public final class GameImages {
     private final BlockIcons blocks;
     private final InventoryRenderer inventories;
     private final ContainerRenderer containers;
+    private final MapRenderer maps;
 
     private GameImages(ClientAssets assets, BtaFont font, TooltipRenderer tooltips) {
         this.assets = assets;
@@ -34,6 +35,7 @@ public final class GameImages {
         this.blocks = new BlockIcons(assets);
         SlotRenderer slots = new SlotRenderer(font, item -> iconImage(item, Canvas.SCALE), assets::texture);
         this.containers = new ContainerRenderer(assets, font, slots);
+        this.maps = new MapRenderer(assets);
         PlayerModelRenderer players = new PlayerModelRenderer(assets, new EntityGeometries(assets));
         this.inventories = new InventoryRenderer(assets, skins, players, slots, containers);
     }
@@ -70,7 +72,8 @@ public final class GameImages {
     }
 
     public byte[] tooltip(ItemSnapshot item) {
-        BufferedImage below = item.container() == null ? null : containers.render(item.container());
+        BufferedImage below = item.container() != null ? containers.render(item.container())
+            : item.map() != null ? maps.render(item.map()) : null;
         return png(tooltips.render(item.tooltip(), below));
     }
 

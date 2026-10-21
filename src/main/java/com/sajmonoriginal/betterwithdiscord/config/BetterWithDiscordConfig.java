@@ -28,6 +28,7 @@ public final class BetterWithDiscordConfig {
     public static int watchdogSeconds;
     public static boolean itemImages;
     public static String tooltipStyle;
+    public static int imagePreviewSeconds;
 
     public static boolean consoleEnabled;
     public static String consoleChannel;
@@ -57,7 +58,8 @@ public final class BetterWithDiscordConfig {
                 .addEntry("show_player_count", "Show the number of online players as the bot status", true)
                 .addEntry("watchdog_seconds", "Post a warning when the server stops ticking for this many seconds, 0 turns it off", 60)
                 .addEntry("item_images", "Show [item] in chat as a picture of the held item, downloads the BTA client once for its textures", true)
-                .addEntry("tooltip_style", "Tooltip style used for item pictures, as in the BTA options", "default");
+                .addEntry("tooltip_style", "Tooltip style used for item pictures, as in the BTA options", "default")
+                .addEntry("image_preview_seconds", "How long /preview shows a Discord image as a map in the hand, 0 turns it off", 60);
         defaults.addCategory("Server console in a Discord channel", "console")
                 .addEntry("enable", legacyBoolean(migrated, "console_enable", false))
                 .addEntry("channel", "ID of the console channel", legacyString(migrated, "console_channel", ""))
@@ -76,6 +78,7 @@ public final class BetterWithDiscordConfig {
         watchdogSeconds = config.getInt("discord.watchdog_seconds");
         itemImages = config.getBoolean("discord.item_images");
         tooltipStyle = config.getString("discord.tooltip_style");
+        imagePreviewSeconds = config.getInt("discord.image_preview_seconds");
         consoleEnabled = config.getBoolean("console.enable");
         consoleChannel = config.getString("console.channel");
         consoleCommandsEnabled = config.getBoolean("console.commands");

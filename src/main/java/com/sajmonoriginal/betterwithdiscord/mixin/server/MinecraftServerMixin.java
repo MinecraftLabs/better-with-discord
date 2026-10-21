@@ -1,5 +1,6 @@
 package com.sajmonoriginal.betterwithdiscord.mixin.server;
 
+import com.sajmonoriginal.betterwithdiscord.preview.MapPreviews;
 import com.sajmonoriginal.betterwithdiscord.server.DiscordClient;
 import com.sajmonoriginal.betterwithdiscord.server.ServerThread;
 import net.minecraft.server.MinecraftServer;
@@ -13,6 +14,7 @@ public class MinecraftServerMixin {
     @Inject(method = "doTick", at = @At("HEAD"))
     private void betterWithDiscord$runDiscordTasks(CallbackInfo ci) {
         ServerThread.runTasks();
+        MapPreviews.tick();
     }
 
     @Inject(method = "stopServer", at = @At("HEAD"))

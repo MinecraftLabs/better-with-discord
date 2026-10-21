@@ -2,9 +2,11 @@ package com.sajmonoriginal.betterwithdiscord;
 
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import com.sajmonoriginal.betterwithdiscord.image.GameImages;
+import com.sajmonoriginal.betterwithdiscord.preview.PreviewCommand;
 import com.sajmonoriginal.betterwithdiscord.server.DiscordClient;
 import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.core.net.command.CommandManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import turniplabs.halplibe.event.defs.ServerEvents;
@@ -28,6 +30,7 @@ public class BetterWithDiscordMod implements DedicatedServerModInitializer {
             loadImages();
             DiscordClient.onServerStarted();
         });
+        CommandManager.registerServerCommand(new PreviewCommand());
         Thread startup = new Thread(DiscordClient::start, "Better With Discord startup");
         startup.setDaemon(true);
         startup.start();

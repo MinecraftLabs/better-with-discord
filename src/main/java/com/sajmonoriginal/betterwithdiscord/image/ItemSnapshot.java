@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public record ItemSnapshot(String tooltip, String name, int colorIndex, int count, List<String> icons, Block<?> block, int meta,
-                           int durabilityWidth, int durabilityProgress, ContainerSnapshot container) {
+                           int durabilityWidth, int durabilityProgress, ContainerSnapshot container, MapSnapshot map) {
 
     public static ItemSnapshot of(ItemStack stack) {
         return of(stack, null);
@@ -53,7 +53,8 @@ public record ItemSnapshot(String tooltip, String name, int colorIndex, int coun
             durabilityProgress = (int) Math.round(255.0 - stack.getItemDamageForDisplay() * 255.0 / stack.getMaxDamage());
         }
         return new ItemSnapshot(text.toString(), TextFormatting.removeAllFormatting(stack.getDisplayName()), stack.getDisplayColor(), stack.stackSize, List.copyOf(icons),
-                block, stack.getMetadata(), durabilityWidth, durabilityProgress, withContents ? ContainerSnapshot.of(stack, world) : null);
+                block, stack.getMetadata(), durabilityWidth, durabilityProgress, withContents ? ContainerSnapshot.of(stack, world) : null,
+                withContents ? MapSnapshot.of(stack, world) : null);
     }
 
     private static String formatDescription(String description) {

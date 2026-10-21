@@ -3,6 +3,7 @@ package com.sajmonoriginal.betterwithdiscord.server;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import com.sajmonoriginal.betterwithdiscord.image.GameImages;
+import com.sajmonoriginal.betterwithdiscord.preview.DiscordImages;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
@@ -19,6 +20,8 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -208,8 +211,13 @@ public class DiscordClient {
             if (referenced != null) {
                 content.insert(0, "(reply to " + displayName(referenced) + ") ");
             }
+            List<DiscordImages.Entry> images = new ArrayList<>();
             for (Message.Attachment attachment : message.getAttachments()) {
-                content.append(" [").append(attachment.getFileName()).append(']');
+                if (attachment.isImage() && DiscordImages.supported(attachment.getFileName())) {
+                    images.add(DiscordImages.add(DiscordChatRelay.clean(attachment.getFileName()), attachment.getProxy(), attachment.getSize()));
+                } else {
+                    content.append(" [").append(attachment.getFileName()).append(']');
+                }
             }
             for (StickerItem sticker : message.getStickers()) {
                 content.append(" [").append(sticker.getName()).append(']');
@@ -217,7 +225,7 @@ public class DiscordClient {
 
             String author = displayName(message);
             String text = content.toString();
-            ServerThread.execute(() -> DiscordChatRelay.sendToMinecraft(author, text));
+            ServerThread.execute(() -> DiscordChatRelay.sendToMinecraft(author, text, images));
         }
 
         private static String displayName(Message message) {

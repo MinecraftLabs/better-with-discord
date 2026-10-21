@@ -5,6 +5,9 @@ import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import com.sajmonoriginal.betterwithdiscord.image.GameImages;
 import com.sajmonoriginal.betterwithdiscord.image.InventorySnapshot;
 import com.sajmonoriginal.betterwithdiscord.image.ItemSnapshot;
+import com.sajmonoriginal.betterwithdiscord.preview.DiscordImages;
+import com.sajmonoriginal.betterwithdiscord.preview.MapPreviews;
+import com.sajmonoriginal.betterwithdiscord.preview.PreviewCommand;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
@@ -54,10 +57,10 @@ public class DiscordChatRelay {
     private static final int MAX_NAME_LENGTH = 80;
     private static final List<String> RESERVED_NAMES = List.of("clyde", "discord");
 
-    public static void sendToMinecraft(String author, String message) {
+    public static void sendToMinecraft(String author, String message, List<DiscordImages.Entry> images) {
         MinecraftServer server = MinecraftServer.getInstance();
         String prefix = "[" + TextFormatting.PURPLE + "DISCORD" + TextFormatting.RESET + "] <" + clean(author) + "> ";
-        int sent = 0;
+        List<String> lines = new ArrayList<>();
         for (String line : message.split("\n")) {
             String text = ChatEmotes.process(clean(line)).trim();
             if (text.isEmpty()) {
@@ -66,16 +69,41 @@ public class DiscordChatRelay {
             if (text.length() > MAX_LINE_LENGTH) {
                 text = text.substring(0, MAX_LINE_LENGTH);
             }
-            String chat = prefix + text;
-            BetterWithDiscordMod.LOGGER.info(chat);
-            server.playerList.sendEncryptedChatToAllPlayers(chat);
-            if (++sent == MAX_LINES) {
+            lines.add(text);
+            if (lines.size() == MAX_LINES) {
                 break;
             }
         }
+        if (!images.isEmpty()) {
+            StringBuilder links = new StringBuilder();
+            for (DiscordImages.Entry image : images) {
+                if (!links.isEmpty()) {
+                    links.append(' ');
+                }
+                links.append(imageLink(image));
+            }
+            if (lines.isEmpty()) {
+                lines.add(links.toString());
+            } else {
+                lines.set(lines.size() - 1, lines.get(lines.size() - 1) + " " + links);
+            }
+        }
+        for (String line : lines) {
+            String chat = prefix + line;
+            BetterWithDiscordMod.LOGGER.info(chat);
+            server.playerList.sendEncryptedChatToAllPlayers(chat);
+        }
     }
 
-    private static String clean(String text) {
+    private static String imageLink(DiscordImages.Entry image) {
+        String link = "[" + TextFormatting.LIGHT_BLUE + image.name() + TextFormatting.RESET + "]";
+        if (!MapPreviews.enabled()) {
+            return link;
+        }
+        return link + " " + TextFormatting.LIGHT_GRAY + "/" + PreviewCommand.NAME + " " + image.id() + TextFormatting.RESET;
+    }
+
+    static String clean(String text) {
         StringBuilder cleaned = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
