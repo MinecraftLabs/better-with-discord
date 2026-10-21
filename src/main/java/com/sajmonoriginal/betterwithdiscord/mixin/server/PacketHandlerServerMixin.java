@@ -15,8 +15,6 @@ public class PacketHandlerServerMixin {
 
     @WrapOperation(method = "handleMessage", at = @At(value = "INVOKE", target = "Lnet/minecraft/core/net/ChatEmotes;process(Ljava/lang/String;)Ljava/lang/String;"))
     private String betterWithDiscord$relayChat(String message, Operation<String> original) {
-        String processed = original.call(message);
-        DiscordChatRelay.sendToDiscord(playerEntity, processed);
-        return processed;
+        return DiscordChatRelay.relayChat(playerEntity, original.call(message));
     }
 }

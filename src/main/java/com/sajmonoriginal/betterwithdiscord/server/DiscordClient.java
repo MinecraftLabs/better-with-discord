@@ -2,6 +2,7 @@ package com.sajmonoriginal.betterwithdiscord.server;
 
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
+import com.sajmonoriginal.betterwithdiscord.image.GameImages;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
@@ -93,6 +94,7 @@ public class DiscordClient {
     }
 
     public static void stop() {
+        GameImages.close();
         JDA client = jda;
         if (client == null) {
             return;

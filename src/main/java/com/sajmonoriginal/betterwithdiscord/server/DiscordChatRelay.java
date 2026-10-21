@@ -2,6 +2,8 @@ package com.sajmonoriginal.betterwithdiscord.server;
 
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
+import com.sajmonoriginal.betterwithdiscord.image.GameImages;
+import com.sajmonoriginal.betterwithdiscord.image.ItemSnapshot;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
@@ -9,8 +11,10 @@ import net.dv8tion.jda.api.entities.Webhook;
 import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.restaction.WebhookMessageCreateAction;
+import net.dv8tion.jda.api.utils.FileUpload;
 import net.dv8tion.jda.api.utils.MarkdownSanitizer;
 import net.minecraft.core.entity.player.Player;
+import net.minecraft.core.item.ItemStack;
 import net.minecraft.core.net.ChatEmotes;
 import net.minecraft.core.net.command.TextFormatting;
 import net.minecraft.core.util.helper.NetCharacters;
@@ -21,14 +25,25 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class DiscordChatRelay {
     private static final int MAX_LINE_LENGTH = 256;
     private static final int MAX_LINES = 10;
+    private static final Pattern ITEM_PLACEHOLDER = Pattern.compile("(?i)\\[(item|i)]");
+    private static final String TOOLTIP_FILE = "tooltip.png";
+    private static final String ICON_FILE = "icon.png";
+    private static final ExecutorService CHAT = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "Better With Discord chat");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final int MAX_NAME_LENGTH = 80;
     private static final List<String> RESERVED_NAMES = List.of("clyde", "discord");
 
@@ -64,14 +79,68 @@ public class DiscordChatRelay {
         return cleaned.toString();
     }
 
-    public static void sendToDiscord(Player player, String message) {
+    public static String relayChat(Player player, String message) {
+        Matcher placeholder = ITEM_PLACEHOLDER.matcher(message);
+        ItemStack held = player.inventory.getCurrentItem();
+        if (held == null || !placeholder.find()) {
+            sendToDiscord(player, message, null);
+            return message;
+        }
+
+        ItemSnapshot item = ItemSnapshot.of(held, player.world);
+        String count = item.count() > 1 ? " x" + item.count() : "";
+        String inGame = "[" + TextFormatting.get(item.colorIndex()) + item.name() + count + TextFormatting.RESET + TextFormatting.WHITE + "]";
+        sendToDiscord(player, placeholder.replaceAll(Matcher.quoteReplacement("[" + item.name() + count + "]")), item);
+        return placeholder.replaceAll(Matcher.quoteReplacement(inGame));
+    }
+
+    private static void sendToDiscord(Player player, String message, ItemSnapshot item) {
         String content = MarkdownSanitizer.escape(TextFormatting.removeAllFormatting(message));
         String name = webhookName(TextFormatting.removeAllFormatting(player.getDisplayName()));
         String avatar = "https://www.mc-heads.net/head/" + player.username + "/150";
-        send(webhook -> webhook.sendMessage(content)
-                .setUsername(name)
-                .setAvatarUrl(avatar)
-                .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)));
+        CHAT.execute(() -> {
+            GameImages images = item == null ? null : GameImages.get();
+            MessageEmbed embed = null;
+            byte[] tooltip = null;
+            byte[] icon = null;
+            if (images != null) {
+                try {
+                    tooltip = images.tooltip(item);
+                    icon = images.icon(item);
+                    embed = itemEmbed(name, avatar, item, images.color(item.colorIndex()), icon != null);
+                } catch (RuntimeException e) {
+                    BetterWithDiscordMod.LOGGER.warn("Could not draw the picture of {}", item.name(), e);
+                }
+            }
+            MessageEmbed itemEmbed = embed;
+            byte[] tooltipPng = tooltip;
+            byte[] iconPng = icon;
+            send(webhook -> {
+                WebhookMessageCreateAction<Message> action = webhook.sendMessage(content)
+                        .setUsername(name)
+                        .setAvatarUrl(avatar)
+                        .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
+                if (itemEmbed != null) {
+                    action.addEmbeds(itemEmbed).addFiles(FileUpload.fromData(tooltipPng, TOOLTIP_FILE));
+                    if (iconPng != null) {
+                        action.addFiles(FileUpload.fromData(iconPng, ICON_FILE));
+                    }
+                }
+                return action;
+            });
+        });
+    }
+
+    private static MessageEmbed itemEmbed(String player, String avatar, ItemSnapshot item, int color, boolean withIcon) {
+        EmbedBuilder embed = new EmbedBuilder()
+                .setColor(color)
+                .setAuthor(player + "'s Item", null, avatar)
+                .setTitle(item.name() + (item.count() > 1 ? " x" + item.count() : ""))
+                .setImage("attachment://" + TOOLTIP_FILE);
+        if (withIcon) {
+            embed.setThumbnail("attachment://" + ICON_FILE);
+        }
+        return embed.build();
     }
 
     public static void sendJoinLeaveMessage(Player player, boolean joined) {
