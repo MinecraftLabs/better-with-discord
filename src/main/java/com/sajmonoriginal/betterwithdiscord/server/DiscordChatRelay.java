@@ -6,6 +6,10 @@ import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.MessageEmbed;
 import net.dv8tion.jda.api.entities.Webhook;
+import net.dv8tion.jda.api.exceptions.ErrorResponseException;
+import net.dv8tion.jda.api.requests.ErrorResponse;
+import net.dv8tion.jda.api.requests.restaction.WebhookMessageCreateAction;
+import net.dv8tion.jda.api.utils.MarkdownSanitizer;
 import net.minecraft.core.entity.player.Player;
 import net.minecraft.core.net.ChatEmotes;
 import net.minecraft.core.net.command.TextFormatting;
@@ -14,13 +18,19 @@ import net.minecraft.server.MinecraftServer;
 
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.regex.Pattern;
 
 public class DiscordChatRelay {
     private static final int MAX_LINE_LENGTH = 256;
     private static final int MAX_LINES = 10;
+    private static final int MAX_NAME_LENGTH = 80;
+    private static final List<String> RESERVED_NAMES = List.of("clyde", "discord");
 
     public static void sendToMinecraft(String author, String message) {
         MinecraftServer server = MinecraftServer.getInstance();
@@ -55,13 +65,13 @@ public class DiscordChatRelay {
     }
 
     public static void sendToDiscord(Player player, String message) {
-        Webhook webhook = DiscordClient.webhook;
-        if (webhook == null) return;
-        webhook.sendMessage(TextFormatting.removeAllFormatting(message))
-                .setUsername(TextFormatting.removeAllFormatting(player.getDisplayName()))
-                .setAvatarUrl("https://www.mc-heads.net/head/" + player.username + "/150")
-                .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
-                .queue();
+        String content = MarkdownSanitizer.escape(TextFormatting.removeAllFormatting(message));
+        String name = webhookName(TextFormatting.removeAllFormatting(player.getDisplayName()));
+        String avatar = "https://www.mc-heads.net/head/" + player.username + "/150";
+        send(webhook -> webhook.sendMessage(content)
+                .setUsername(name)
+                .setAvatarUrl(avatar)
+                .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class)));
     }
 
     public static void sendJoinLeaveMessage(Player player, boolean joined) {
@@ -97,7 +107,7 @@ public class DiscordChatRelay {
                 .build();
         try {
             webhook.sendMessageEmbeds(embed)
-                    .setUsername(BetterWithDiscordConfig.serverName)
+                    .setUsername(webhookName(BetterWithDiscordConfig.serverName))
                     .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl)
                     .submit()
                     .get(5, TimeUnit.SECONDS);
@@ -116,11 +126,35 @@ public class DiscordChatRelay {
     }
 
     private static void sendEmbed(MessageEmbed embed) {
+        send(webhook -> webhook.sendMessageEmbeds(embed)
+                .setUsername(webhookName(BetterWithDiscordConfig.serverName))
+                .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl));
+    }
+
+    private static String webhookName(String name) {
+        StringBuilder allowed = new StringBuilder(name.trim());
+        for (String reserved : RESERVED_NAMES) {
+            int at = allowed.toString().toLowerCase(Locale.ROOT).indexOf(reserved);
+            while (at >= 0) {
+                allowed.insert(at + 1, '-');
+                at = allowed.toString().toLowerCase(Locale.ROOT).indexOf(reserved, at + 1);
+            }
+        }
+        if (allowed.isEmpty()) {
+            return "Player";
+        }
+        return allowed.length() > MAX_NAME_LENGTH ? allowed.substring(0, MAX_NAME_LENGTH) : allowed.toString();
+    }
+
+    private static void send(Function<Webhook, WebhookMessageCreateAction<Message>> message) {
         Webhook webhook = DiscordClient.webhook;
         if (webhook == null) return;
-        webhook.sendMessageEmbeds(embed)
-                .setUsername(BetterWithDiscordConfig.serverName)
-                .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl)
-                .queue();
+        message.apply(webhook).queue(null, error -> {
+            if (error instanceof ErrorResponseException response && response.getErrorResponse() == ErrorResponse.UNKNOWN_WEBHOOK) {
+                DiscordClient.replaceWebhook(webhook).thenAccept(replacement -> message.apply(replacement).queue());
+            } else {
+                BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", error);
+            }
+        });
     }
 }

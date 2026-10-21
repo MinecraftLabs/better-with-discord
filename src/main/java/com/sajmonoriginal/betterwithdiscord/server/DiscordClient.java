@@ -5,8 +5,10 @@ import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Member;
+import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.Webhook;
 import net.dv8tion.jda.api.entities.channel.middleman.StandardGuildMessageChannel;
+import net.dv8tion.jda.api.entities.sticker.StickerItem;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
@@ -15,11 +17,14 @@ import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 public class DiscordClient {
     public static volatile JDA jda;
     public static volatile Webhook webhook;
     private static StandardGuildMessageChannel channel;
+    private static final String WEBHOOK_NAME = "BTA Chat Link";
+    private static CompletableFuture<Webhook> replacement;
     private static boolean ready;
     private static boolean serverStarted;
 
@@ -109,7 +114,26 @@ public class DiscordClient {
         Optional<Webhook> owned = channel.retrieveWebhooks().complete().stream()
                 .filter(it -> it.getToken() != null && it.getOwnerAsUser() != null && it.getOwnerAsUser().getId().equals(selfId))
                 .findFirst();
-        return owned.orElseGet(() -> channel.createWebhook("BTA Chat Link").complete());
+        return owned.orElseGet(() -> channel.createWebhook(WEBHOOK_NAME).complete());
+    }
+
+    public static synchronized CompletableFuture<Webhook> replaceWebhook(Webhook stale) {
+        Webhook current = webhook;
+        if (current != null && current != stale) {
+            return CompletableFuture.completedFuture(current);
+        }
+        if (replacement == null || replacement.isCompletedExceptionally() || replacement.getNow(null) == stale) {
+            StandardGuildMessageChannel channel = getChannel();
+            if (channel == null) {
+                return CompletableFuture.failedFuture(new IllegalStateException("Chat channel is not available"));
+            }
+            BetterWithDiscordMod.LOGGER.info("The chat webhook was deleted, creating a new one");
+            replacement = channel.createWebhook(WEBHOOK_NAME).submit().thenApply(created -> {
+                webhook = created;
+                return created;
+            });
+        }
+        return replacement;
     }
 
     public static class Listener extends ListenerAdapter {
@@ -124,10 +148,27 @@ public class DiscordClient {
                 return;
             }
 
-            Member member = event.getMember();
-            String author = member != null ? member.getEffectiveName() : event.getAuthor().getEffectiveName();
-            String content = event.getMessage().getContentStripped();
-            ServerThread.execute(() -> DiscordChatRelay.sendToMinecraft(author, content));
+            Message message = event.getMessage();
+            StringBuilder content = new StringBuilder(message.getContentStripped());
+            Message referenced = message.getReferencedMessage();
+            if (referenced != null) {
+                content.insert(0, "(reply to " + displayName(referenced) + ") ");
+            }
+            for (Message.Attachment attachment : message.getAttachments()) {
+                content.append(" [").append(attachment.getFileName()).append(']');
+            }
+            for (StickerItem sticker : message.getStickers()) {
+                content.append(" [").append(sticker.getName()).append(']');
+            }
+
+            String author = displayName(message);
+            String text = content.toString();
+            ServerThread.execute(() -> DiscordChatRelay.sendToMinecraft(author, text));
+        }
+
+        private static String displayName(Message message) {
+            Member member = message.getMember();
+            return member != null ? member.getEffectiveName() : message.getAuthor().getEffectiveName();
         }
     }
 }
