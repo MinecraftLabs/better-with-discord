@@ -7,7 +7,11 @@ import net.minecraft.core.net.command.CommandSource;
 import net.minecraft.core.net.packet.Packet;
 import net.minecraft.core.util.phys.Vec3;
 import net.minecraft.core.world.World;
+import net.minecraft.core.world.pos.TilePos;
+import net.minecraft.core.world.pos.TilePosc;
 import net.minecraft.server.MinecraftServer;
+import org.joml.Vector3d;
+import org.joml.Vector3dc;
 
 import java.util.function.Supplier;
 
@@ -98,13 +102,13 @@ public class DiscordCommandSource implements CommandSource {
     }
 
     @Override
-    public Vec3 getBlockCoordinates() {
-        return Vec3.getTempVec3(0, 64, 0);
+    public TilePosc getBlockCoordinates() {
+        return new TilePos(0, 64, 0);
     }
 
     @Override
-    public Vec3 getCoordinates(boolean blockCoordinates) {
-        return Vec3.getTempVec3(0, 64, 0);
+    public Vector3dc getCoordinates(boolean blockCoordinates) {
+        return new Vector3d(0, 64, 0);
     }
 
     @Override

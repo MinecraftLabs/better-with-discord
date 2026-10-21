@@ -17,7 +17,7 @@ public class PacketHandlerServerMixin {
     @Shadow private PlayerServer playerEntity;
 
     @Redirect(
-            method = "handleChat",
+            method = "handleMessage",
             at = @At(
                     value = "INVOKE",
                     target = "Lnet/minecraft/core/net/ChatEmotes;process(Ljava/lang/String;)Ljava/lang/String;"
@@ -26,7 +26,7 @@ public class PacketHandlerServerMixin {
     String redirectChatHandle(String s) {
         String message = ChatEmotes.process(s);
 
-        if (!BetterWithDiscordConfig.discord_enable) {
+        if (!BetterWithDiscordConfig.enabled) {
             return message;
         }
 

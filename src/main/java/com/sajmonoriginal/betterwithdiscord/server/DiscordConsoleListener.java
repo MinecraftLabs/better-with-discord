@@ -14,7 +14,7 @@ public class DiscordConsoleListener extends ListenerAdapter {
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
-        if (!BetterWithDiscordConfig.console_enable || !BetterWithDiscordConfig.console_commands_enable) {
+        if (!BetterWithDiscordConfig.consoleEnabled || !BetterWithDiscordConfig.consoleCommandsEnabled) {
             return;
         }
 
@@ -22,7 +22,7 @@ public class DiscordConsoleListener extends ListenerAdapter {
             return;
         }
 
-        if (!event.getChannel().getId().equals(BetterWithDiscordConfig.console_channel)) {
+        if (!event.getChannel().getId().equals(BetterWithDiscordConfig.consoleChannel)) {
             return;
         }
 
@@ -31,7 +31,7 @@ public class DiscordConsoleListener extends ListenerAdapter {
             return;
         }
 
-        String prefix = BetterWithDiscordConfig.console_command_prefix;
+        String prefix = BetterWithDiscordConfig.consoleCommandPrefix;
         if (!prefix.isEmpty()) {
             if (!message.startsWith(prefix)) {
                 return;
@@ -48,7 +48,7 @@ public class DiscordConsoleListener extends ListenerAdapter {
             commandName = commandName.substring(1);
         }
         
-        if (BetterWithDiscordConfig.console_command_blacklist.contains(commandName)) {
+        if (BetterWithDiscordConfig.consoleCommandBlacklist.contains(commandName)) {
             sendResponse(event.getChannel(), "Command `" + commandName + "` is blacklisted.");
             return;
         }

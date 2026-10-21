@@ -1,31 +1,30 @@
 {
-  "schemaVersion": 1,
-  "id": "better_with_discord",
-  "version": "${version}",
-
-  "name": "Better With Discord",
-  "description": "Discord Integration for BTA Servers",
-  "authors": [
-    "SajmonOriginal"
-  ],
-  "contact": {
-    "sources": "https://github.com/SajmonOriginal/better-with-discord"
-  },
-
-  "environment": "*",
-  "entrypoints": {
-    "main": [
-      "com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod"
-    ],
-    "client": [
-    ]
-  },
-  "mixins": [
-    "better_with_discord.mixins.json"
-  ],
-
-  "depends": {
-    "minecraft": ">=7.3",
-    "fabricloader": ">=0.15.5"
-  }
+	"schemaVersion": 1,
+	"id": "better_with_discord",
+	"version": "${version}",
+	"name": "Better With Discord",
+	"description": "Links the chat of a Better Than Adventure server with a Discord channel.",
+	"authors": [
+		"SajmonOriginal"
+	],
+	"contact": {
+		"sources": "https://github.com/MinecraftLabs/better-with-discord",
+		"issues": "https://github.com/MinecraftLabs/better-with-discord/issues"
+	},
+	"license": "MPL-2.0",
+	"environment": "server",
+	"entrypoints": {
+		"server": [
+			"com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod"
+		]
+	},
+	"mixins": [
+		"better_with_discord.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=${fabricloader}",
+		"halplibe": ">=${halplibe}",
+		"minecraft": "~8.0.1",
+		"java": ">=${java}"
+	}
 }

@@ -86,8 +86,8 @@ public class DiscordChatRelay {
     public static void sendMessage(String content, WebhookEmbed embed) {
         if (webhookClient == null) return;
         WebhookMessageBuilder builder = new WebhookMessageBuilder();
-        builder.setUsername(BetterWithDiscordConfig.discord_servername);
-        builder.setAvatarUrl(BetterWithDiscordConfig.discord_serverpfp_url);
+        builder.setUsername(BetterWithDiscordConfig.serverName);
+        builder.setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl);
         if (content != null && !content.isEmpty()) {
             builder.setContent(content);
         }

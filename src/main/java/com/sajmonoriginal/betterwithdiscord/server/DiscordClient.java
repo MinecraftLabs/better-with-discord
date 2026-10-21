@@ -24,13 +24,13 @@ public class DiscordClient {
     public static StandardGuildMessageChannel channel;
 
     public static boolean init() {
-        if (!BetterWithDiscordConfig.discord_enable) {
+        if (!BetterWithDiscordConfig.enabled) {
             return false;
         }
 
         try {
             JDABuilder builder = JDABuilder.create(
-                    BetterWithDiscordConfig.discord_token,
+                    BetterWithDiscordConfig.token,
                     GatewayIntent.GUILD_MESSAGES,
                     GatewayIntent.MESSAGE_CONTENT,
                     GatewayIntent.GUILD_WEBHOOKS
@@ -40,9 +40,9 @@ public class DiscordClient {
 
             jda = builder.build().awaitReady();
             
-            if (BetterWithDiscordConfig.console_enable) {
+            if (BetterWithDiscordConfig.consoleEnabled) {
                 ConsoleAppender.register();
-                BetterWithDiscordMod.LOGGER.info("Console forwarding enabled to channel: {}", BetterWithDiscordConfig.console_channel);
+                BetterWithDiscordMod.LOGGER.info("Console forwarding enabled to channel: {}", BetterWithDiscordConfig.consoleChannel);
             }
 
             return true;
@@ -58,7 +58,7 @@ public class DiscordClient {
         }
 
         if (channel == null) {
-            channel = jda.getChannelById(StandardGuildMessageChannel.class, BetterWithDiscordConfig.discord_channel);
+            channel = jda.getChannelById(StandardGuildMessageChannel.class, BetterWithDiscordConfig.chatChannel);
         }
 
         return channel;
@@ -109,7 +109,7 @@ public class DiscordClient {
                     return;
                 }
 
-                if (!message.getMessage().getChannel().getId().equals(BetterWithDiscordConfig.discord_channel)) {
+                if (!message.getMessage().getChannel().getId().equals(BetterWithDiscordConfig.chatChannel)) {
                     return;
                 }
 

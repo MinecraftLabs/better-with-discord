@@ -82,7 +82,7 @@ public class ConsoleAppender extends AbstractAppender {
     }
 
     private void processQueue() {
-        if (!BetterWithDiscordConfig.console_enable || DiscordClient.jda == null) {
+        if (!BetterWithDiscordConfig.consoleEnabled || DiscordClient.jda == null) {
             return;
         }
 
@@ -117,15 +117,15 @@ public class ConsoleAppender extends AbstractAppender {
     }
 
     private MessageChannel getConsoleChannel() {
-        if (DiscordClient.jda == null || BetterWithDiscordConfig.console_channel.isEmpty()) {
+        if (DiscordClient.jda == null || BetterWithDiscordConfig.consoleChannel.isEmpty()) {
             return null;
         }
-        return DiscordClient.jda.getTextChannelById(BetterWithDiscordConfig.console_channel);
+        return DiscordClient.jda.getTextChannelById(BetterWithDiscordConfig.consoleChannel);
     }
 
     @Override
     public void append(LogEvent event) {
-        if (!BetterWithDiscordConfig.console_enable) {
+        if (!BetterWithDiscordConfig.consoleEnabled) {
             return;
         }
 

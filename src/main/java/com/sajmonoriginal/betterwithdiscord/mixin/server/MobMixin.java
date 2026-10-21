@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(value = Mob.class, remap = false)
 public abstract class MobMixin {
-    @Shadow public abstract String getDeathMessage(Entity entity);
+    @Shadow public abstract String getDeathMessageKey(Entity entity);
 
     @Inject(
             method = "onDeath",
@@ -20,7 +20,7 @@ public abstract class MobMixin {
     )
     void processDeathMessage(Entity entity, CallbackInfo ci) {
         if ((Mob)((Object)this) instanceof Player) {
-            String message = getDeathMessage(entity).replaceAll("\u00a7.", "");
+            String message = getDeathMessageKey(entity).replaceAll("\u00a7.", "");
             DiscordChatRelay.sendDeathMessage(message);
         }
     }
