@@ -118,6 +118,22 @@ public class DiscordChatRelay {
         }
     }
 
+    public static void sendServerFrozenMessage(int seconds) {
+        sendEmbed(new EmbedBuilder()
+                .setColor(0xf9a62f)
+                .setAuthor("The server has not responded for " + seconds + " seconds")
+                .setTimestamp(Instant.now())
+                .build());
+    }
+
+    public static void sendServerRecoveredMessage() {
+        sendEmbed(new EmbedBuilder()
+                .setColor(0x4ae485)
+                .setAuthor("The server is responding again")
+                .setTimestamp(Instant.now())
+                .build());
+    }
+
     public static void sendServerSleepMessage() {
         sendEmbed(new EmbedBuilder()
                 .setColor(0x222d5a)

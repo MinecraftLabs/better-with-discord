@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public final class ServerThread {
     private static final Queue<Runnable> TASKS = new ConcurrentLinkedQueue<>();
+    private static volatile long lastTick = System.nanoTime();
 
     private ServerThread() {
     }
@@ -15,7 +16,12 @@ public final class ServerThread {
         TASKS.add(task);
     }
 
+    public static long nanosSinceLastTick() {
+        return System.nanoTime() - lastTick;
+    }
+
     public static void runTasks() {
+        lastTick = System.nanoTime();
         Runnable task;
         while ((task = TASKS.poll()) != null) {
             try {

@@ -24,6 +24,8 @@ public final class BetterWithDiscordConfig {
     public static String chatChannel;
     public static String serverName;
     public static String serverAvatarUrl;
+    public static boolean showPlayerCount;
+    public static int watchdogSeconds;
 
     public static boolean consoleEnabled;
     public static String consoleChannel;
@@ -48,7 +50,9 @@ public final class BetterWithDiscordConfig {
                 .addEntry("token", "Bot token from the Discord Developer Portal", legacyString(migrated, "token", ""))
                 .addEntry("channel", "ID of the chat channel", legacyString(migrated, "channel", ""))
                 .addEntry("server_name", "Name used for server messages", legacyString(migrated, "servername", "Server"))
-                .addEntry("server_avatar_url", "Avatar used for server messages", legacyString(migrated, "serverpfp_url", "https://i.imgur.com/dJUId0O.png"));
+                .addEntry("server_avatar_url", "Avatar used for server messages", legacyString(migrated, "serverpfp_url", "https://i.imgur.com/dJUId0O.png"))
+                .addEntry("show_player_count", "Show the number of online players as the bot status", true)
+                .addEntry("watchdog_seconds", "Post a warning when the server stops ticking for this many seconds, 0 turns it off", 60);
         defaults.addCategory("Server console in a Discord channel", "console")
                 .addEntry("enable", legacyBoolean(migrated, "console_enable", false))
                 .addEntry("channel", "ID of the console channel", legacyString(migrated, "console_channel", ""))
@@ -62,6 +66,8 @@ public final class BetterWithDiscordConfig {
         chatChannel = config.getString("discord.channel");
         serverName = config.getString("discord.server_name");
         serverAvatarUrl = config.getString("discord.server_avatar_url");
+        showPlayerCount = config.getBoolean("discord.show_player_count");
+        watchdogSeconds = config.getInt("discord.watchdog_seconds");
         consoleEnabled = config.getBoolean("console.enable");
         consoleChannel = config.getString("console.channel");
         consoleCommandsEnabled = config.getBoolean("console.commands");

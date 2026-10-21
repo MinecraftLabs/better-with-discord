@@ -4,6 +4,7 @@ import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Activity;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.Webhook;
@@ -12,12 +13,16 @@ import net.dv8tion.jda.api.entities.sticker.StickerItem;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class DiscordClient {
     public static volatile JDA jda;
@@ -25,6 +30,13 @@ public class DiscordClient {
     private static StandardGuildMessageChannel channel;
     private static final String WEBHOOK_NAME = "BTA Chat Link";
     private static CompletableFuture<Webhook> replacement;
+    private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(task -> {
+        Thread thread = new Thread(task, "Better With Discord status");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static int shownPlayerCount = -1;
+    private static boolean frozen;
     private static boolean ready;
     private static boolean serverStarted;
 
@@ -35,14 +47,24 @@ public class DiscordClient {
                             GatewayIntent.GUILD_MESSAGES,
                             GatewayIntent.MESSAGE_CONTENT
                     )
-                    .addEventListeners(new Listener(), new DiscordConsoleListener())
+                    .addEventListeners(new Listener(), new DiscordConsoleListener(), new DiscordCommands())
                     .build();
             jda = client.awaitReady();
             webhook = findWebhook();
+            StandardGuildMessageChannel chat = getChannel();
+            if (chat != null) {
+                DiscordCommands.register(chat.getGuild());
+            }
 
             if (BetterWithDiscordConfig.consoleEnabled) {
                 ConsoleAppender.register();
                 BetterWithDiscordMod.LOGGER.info("Console forwarding enabled to channel: {}", BetterWithDiscordConfig.consoleChannel);
+            }
+            if (BetterWithDiscordConfig.showPlayerCount) {
+                SCHEDULER.scheduleWithFixedDelay(() -> ServerThread.execute(DiscordClient::updatePlayerCount), 0, 30, TimeUnit.SECONDS);
+            }
+            if (BetterWithDiscordConfig.watchdogSeconds > 0) {
+                SCHEDULER.scheduleWithFixedDelay(DiscordClient::checkTicking, 5, 5, TimeUnit.SECONDS);
             }
             BetterWithDiscordMod.LOGGER.info("Connected to Discord as {}", client.getSelfUser().getName());
         } catch (InterruptedException e) {
@@ -76,6 +98,7 @@ public class DiscordClient {
             return;
         }
 
+        SCHEDULER.shutdownNow();
         DiscordChatRelay.sendServerStoppedMessage();
         ConsoleAppender.unregister();
         webhook = null;
@@ -88,6 +111,35 @@ public class DiscordClient {
         } catch (InterruptedException e) {
             client.shutdownNow();
             Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void updatePlayerCount() {
+        JDA client = jda;
+        MinecraftServer server = MinecraftServer.getInstance();
+        if (client == null || server == null) {
+            return;
+        }
+        int count = server.playerList.playerEntities.size();
+        if (count != shownPlayerCount) {
+            shownPlayerCount = count;
+            client.getPresence().setActivity(Activity.playing(count + (count == 1 ? " player" : " players") + " online"));
+        }
+    }
+
+    private static void checkTicking() {
+        synchronized (DiscordClient.class) {
+            if (!serverStarted) {
+                return;
+            }
+        }
+        boolean stalled = ServerThread.nanosSinceLastTick() > TimeUnit.SECONDS.toNanos(BetterWithDiscordConfig.watchdogSeconds);
+        if (stalled && !frozen) {
+            frozen = true;
+            DiscordChatRelay.sendServerFrozenMessage(BetterWithDiscordConfig.watchdogSeconds);
+        } else if (!stalled && frozen) {
+            frozen = false;
+            DiscordChatRelay.sendServerRecoveredMessage();
         }
     }
 
