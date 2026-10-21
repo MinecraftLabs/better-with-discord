@@ -2,6 +2,7 @@
 
 [![GitHub release](https://img.shields.io/github/v/release/MinecraftLabs/better-with-discord?color=5865F2)](https://github.com/MinecraftLabs/better-with-discord/releases)
 [![GitHub Downloads](https://img.shields.io/github/downloads/MinecraftLabs/better-with-discord/total?color=5865F2)](https://github.com/MinecraftLabs/better-with-discord/releases)
+[![Modrinth Downloads](https://img.shields.io/modrinth/dt/better-with-discord?color=5865F2&logo=modrinth)](https://modrinth.com/mod/better-with-discord)
 
 Links the chat of a Better Than Adventure server with a Discord channel.
 
