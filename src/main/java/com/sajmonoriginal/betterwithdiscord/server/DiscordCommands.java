@@ -17,7 +17,6 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.entity.player.PlayerServer;
 import org.jetbrains.annotations.NotNull;
 
-import java.util.EnumSet;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -84,8 +83,10 @@ public class DiscordCommands extends ListenerAdapter {
         String reply = text.length() > Message.MAX_CONTENT_LENGTH
                 ? text.substring(0, Message.MAX_CONTENT_LENGTH - 3) + "..."
                 : text;
-        event.getHook().sendMessage(reply)
-                .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class))
-                .queue();
+        event.getHook().sendMessage(reply).queue();
+    }
+
+    static void stop() {
+        RENDER.shutdownNow();
     }
 }

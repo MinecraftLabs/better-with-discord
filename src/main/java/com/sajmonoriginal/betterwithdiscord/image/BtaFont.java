@@ -1,5 +1,7 @@
 package com.sajmonoriginal.betterwithdiscord.image;
 
+import net.minecraft.core.net.command.TextFormatting;
+
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -10,10 +12,8 @@ import java.util.List;
 public final class BtaFont {
     public static final int LINE_HEIGHT = 9;
 
-    private static final String FORMAT_CODES = "0123456789abcdefklmnopr+-";
     private static final char[] BLACKLIST = {'，', '。', '、', '【', '】', '；', '’', '‘', '“', '”', '？', '！', '·'};
     private static final int CELL = 16;
-    private static final int ALPHA_TEST = 26;
     private static final long ITALIC = 1L << 32;
     private static final long UNDERLINE = 1L << 33;
     private static final long STRIKETHROUGH = 1L << 34;
@@ -83,7 +83,7 @@ public final class BtaFont {
     }
 
     private static int formatLength(CharSequence text, int i) {
-        if (text.charAt(i) != '§' || i + 1 >= text.length()) {
+        if (text.charAt(i) != TextFormatting.SPECIAL_CHAR || i + 1 >= text.length()) {
             return 0;
         }
         char next = text.charAt(i + 1);
@@ -95,7 +95,7 @@ public final class BtaFont {
             }
             return 0;
         }
-        return FORMAT_CODES.indexOf(next) != -1 ? 2 : 0;
+        return TextFormatting.FORMAT_CHARS.indexOf(next) != -1 ? 2 : 0;
     }
 
     public void draw(Canvas canvas, String text, double x, double y, int baseColor, boolean shadow) {
@@ -132,7 +132,7 @@ public final class BtaFont {
                     } else if (code == 'r') {
                         config = base;
                     } else {
-                        int index = FORMAT_CODES.indexOf(code);
+                        int index = TextFormatting.FORMAT_CHARS.indexOf(code);
                         if (index < 16) {
                             int alpha = baseColor & 0xFF000000;
                             config = config & ~COLOR | Integer.toUnsignedLong(chatColors[index] & 0xFFFFFF | (alpha == 0 ? 0xFF000000 : alpha));
@@ -231,14 +231,14 @@ public final class BtaFont {
             int shift = italic ? (int) Math.round(1.0 - 2.0 * (ty + 1.5) / (CELL + 3)) : 0;
             for (int tx = -1; tx <= glyph.width + 1; tx++) {
                 int argb = colorAt(glyph, tx, ty, config, color);
-                if ((argb >>> 24) < ALPHA_TEST) {
+                if ((argb >>> 24) < Pixels.ALPHA_TEST) {
                     if ((config & OUTLINE) != 0) {
                         argb = touchesGlyph(glyph, tx, ty, config, color) ? shade : 0;
-                    } else if (shadow && (colorAt(glyph, tx - 2, ty - 2, config, color) >>> 24) > ALPHA_TEST) {
+                    } else if (shadow && (colorAt(glyph, tx - 2, ty - 2, config, color) >>> 24) > Pixels.ALPHA_TEST) {
                         argb = shade;
                     }
                 }
-                if ((argb >>> 24) >= ALPHA_TEST) {
+                if ((argb >>> 24) >= Pixels.ALPHA_TEST) {
                     canvas.blend(originX + tx + shift, originY + ty, argb);
                 }
             }
@@ -248,7 +248,7 @@ public final class BtaFont {
     private boolean touchesGlyph(Glyph glyph, int tx, int ty, long config, int color) {
         for (int dx = -2; dx <= 2; dx++) {
             for (int dy = -2; dy <= 2; dy++) {
-                if ((colorAt(glyph, tx + dx, ty + dy, config, color) >>> 24) > ALPHA_TEST) {
+                if ((colorAt(glyph, tx + dx, ty + dy, config, color) >>> 24) > Pixels.ALPHA_TEST) {
                     return true;
                 }
             }
@@ -282,12 +282,7 @@ public final class BtaFont {
         if (!inside(glyph, tx, ty)) {
             return 0;
         }
-        int texel = glyph.page.getRGB(glyph.u + tx, glyph.v + ty);
-        int alpha = (texel >>> 24) * (color >>> 24) / 255;
-        int red = (texel >> 16 & 0xFF) * (color >> 16 & 0xFF) / 255;
-        int green = (texel >> 8 & 0xFF) * (color >> 8 & 0xFF) / 255;
-        int blue = (texel & 0xFF) * (color & 0xFF) / 255;
-        return alpha << 24 | red << 16 | green << 8 | blue;
+        return Pixels.multiply(glyph.page.getRGB(glyph.u + tx, glyph.v + ty), color);
     }
 
     private record Glyph(BufferedImage page, int u, int v, int width) {

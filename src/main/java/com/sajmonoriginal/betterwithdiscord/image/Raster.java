@@ -6,8 +6,6 @@ import java.util.Comparator;
 import java.util.List;
 
 public final class Raster {
-    private static final int ALPHA_TEST = 26;
-
     private Raster() {
     }
 
@@ -98,7 +96,7 @@ public final class Raster {
                     int tx = Math.max(0, Math.min(texture.getWidth() - 1, (int) Math.floor(pu)));
                     int ty = Math.max(0, Math.min(texture.getHeight() - 1, (int) Math.floor(pv)));
                     int texel = texture.getRGB(tx, ty);
-                    if (texel >>> 24 < ALPHA_TEST) {
+                    if (texel >>> 24 < Pixels.ALPHA_TEST) {
                         continue;
                     }
                     int alpha = Math.round((texel >>> 24) * opacity);
@@ -106,7 +104,7 @@ public final class Raster {
                     int r = Math.min(255, Math.round((tinted >> 16 & 0xFF) * light));
                     int g = Math.min(255, Math.round((tinted >> 8 & 0xFF) * light));
                     int bl = Math.min(255, Math.round((tinted & 0xFF) * light));
-                    pixels[index] = blend(pixels[index], alpha << 24 | r << 16 | g << 8 | bl);
+                    pixels[index] = Pixels.blend(pixels[index], alpha << 24 | r << 16 | g << 8 | bl);
                     if (alpha == 255) {
                         depthBuffer[index] = pz;
                     }
@@ -116,22 +114,6 @@ public final class Raster {
 
         private static float edge(float ax, float ay, float bx, float by, float px, float py) {
             return (bx - ax) * (py - ay) - (by - ay) * (px - ax);
-        }
-
-        private static int blend(int dst, int src) {
-            int srcAlpha = src >>> 24;
-            if (srcAlpha == 255) {
-                return src;
-            }
-            int dstAlpha = dst >>> 24;
-            int outAlpha = srcAlpha + dstAlpha * (255 - srcAlpha) / 255;
-            if (outAlpha == 0) {
-                return 0;
-            }
-            int r = ((src >> 16 & 0xFF) * srcAlpha + (dst >> 16 & 0xFF) * dstAlpha * (255 - srcAlpha) / 255) / outAlpha;
-            int g = ((src >> 8 & 0xFF) * srcAlpha + (dst >> 8 & 0xFF) * dstAlpha * (255 - srcAlpha) / 255) / outAlpha;
-            int b = ((src & 0xFF) * srcAlpha + (dst & 0xFF) * dstAlpha * (255 - srcAlpha) / 255) / outAlpha;
-            return outAlpha << 24 | r << 16 | g << 8 | b;
         }
     }
 }

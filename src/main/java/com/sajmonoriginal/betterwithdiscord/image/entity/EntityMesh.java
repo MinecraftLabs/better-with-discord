@@ -129,21 +129,6 @@ public final class EntityMesh {
     }
 
     public record Quad(double[][] positions, double[][] uvs, double[] normal) {
-        public double uMin() {
-            return Math.min(Math.min(uvs[0][0], uvs[1][0]), Math.min(uvs[2][0], uvs[3][0]));
-        }
-
-        public double uMax() {
-            return Math.max(Math.max(uvs[0][0], uvs[1][0]), Math.max(uvs[2][0], uvs[3][0]));
-        }
-
-        public double vMin() {
-            return Math.min(Math.min(uvs[0][1], uvs[1][1]), Math.min(uvs[2][1], uvs[3][1]));
-        }
-
-        public double vMax() {
-            return Math.max(Math.max(uvs[0][1], uvs[1][1]), Math.max(uvs[2][1], uvs[3][1]));
-        }
     }
 
     public record BonePose(double rotX, double rotY, double rotZ, double x, double y, double z, boolean visible) {

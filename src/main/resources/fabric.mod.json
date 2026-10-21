@@ -26,5 +26,10 @@
 		"halplibe": ">=${halplibe}",
 		"minecraft": "~8.0.1",
 		"java": ">=${java}"
+	},
+	"suggests": {
+		"aether": "*",
+		"betterwithbags": "*",
+		"better_with_hands": "*"
 	}
 }

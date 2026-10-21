@@ -3,6 +3,7 @@ package com.sajmonoriginal.betterwithdiscord.image;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -24,6 +25,7 @@ public record GuiSprite(BufferedImage texture, String type, int width, int heigh
                 scaling = gui == null ? null : gui.getAsJsonObject("scaling");
             }
         } catch (IOException | RuntimeException e) {
+            BetterWithDiscordMod.LOGGER.debug("Could not read the gui scaling of {}", path, e);
             scaling = null;
         }
         if (scaling == null) {

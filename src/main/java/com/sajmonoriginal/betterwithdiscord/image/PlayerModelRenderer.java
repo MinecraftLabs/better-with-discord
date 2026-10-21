@@ -20,7 +20,6 @@ final class PlayerModelRenderer {
     private static final Vector3d LIGHT_0 = new Vector3d(0.2, 1.0, -0.7).normalize();
     private static final Vector3d LIGHT_1 = new Vector3d(-0.2, 1.0, 0.7).normalize();
     private static final double BODY_YAW = Math.toRadians(-9.3);
-    private static final double HEAD_YAW = Math.toRadians(-9.3);
     private static final double HEAD_PITCH = Math.toRadians(-4.9);
     private static final String[] ARMOR_MODELS = {"armor.helmet", "armor.chestplate", "armor.leggings", "armor.boots"};
     private static final List<Set<String>> HIDDEN_ARMOR_BONES = List.of(
@@ -84,7 +83,7 @@ final class PlayerModelRenderer {
             return;
         }
         Map<String, EntityMesh.BonePose> poses = new HashMap<>();
-        poses.put("head", EntityMesh.BonePose.rotation(HEAD_PITCH, HEAD_YAW - BODY_YAW, 0.0));
+        poses.put("head", EntityMesh.BonePose.rotation(HEAD_PITCH, 0.0, 0.0));
         for (String bone : hidden) {
             poses.put(bone, new EntityMesh.BonePose(0, 0, 0, 0, 0, 0, false));
         }

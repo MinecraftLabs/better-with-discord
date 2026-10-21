@@ -133,6 +133,9 @@ public final class BetterWithDiscordConfig {
         }
         StringBuilder joined = new StringBuilder();
         for (JsonElement element : legacy.getAsJsonArray(key)) {
+            if (!element.isJsonPrimitive()) {
+                continue;
+            }
             if (!joined.isEmpty()) {
                 joined.append(", ");
             }

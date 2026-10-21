@@ -13,10 +13,6 @@ import java.util.List;
 public record ItemSnapshot(String tooltip, String name, int colorIndex, int count, List<String> icons, Block<?> block, int meta,
                            int durabilityWidth, int durabilityProgress, ContainerSnapshot container, MapSnapshot map) {
 
-    public static ItemSnapshot of(ItemStack stack) {
-        return of(stack, null);
-    }
-
     public static ItemSnapshot of(ItemStack stack, World world) {
         return of(stack, world, true);
     }

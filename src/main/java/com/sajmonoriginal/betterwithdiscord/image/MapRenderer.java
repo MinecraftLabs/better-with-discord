@@ -93,10 +93,7 @@ final class MapRenderer {
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 int texel = source.getRGB(Math.min(source.getWidth() - 1, u + x), Math.min(source.getHeight() - 1, v + y));
-                int red = (texel >> 16 & 0xFF) * (color >> 16 & 0xFF) / 255;
-                int green = (texel >> 8 & 0xFF) * (color >> 8 & 0xFF) / 255;
-                int blue = (texel & 0xFF) * (color & 0xFF) / 255;
-                result.setRGB(x, y, texel & 0xFF000000 | red << 16 | green << 8 | blue);
+                result.setRGB(x, y, Pixels.multiply(texel, color | 0xFF000000));
             }
         }
         return result;

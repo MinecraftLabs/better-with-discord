@@ -50,6 +50,10 @@ public final class MapPreviews {
     private MapPreviews() {
     }
 
+    public static void stop() {
+        LOADER.shutdownNow();
+    }
+
     public static boolean enabled() {
         return BetterWithDiscordConfig.imagePreviewSeconds > 0;
     }

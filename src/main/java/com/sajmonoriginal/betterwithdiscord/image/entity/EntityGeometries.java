@@ -4,8 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import com.sajmonoriginal.betterwithdiscord.image.ClientAssets;
 import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
+import com.sajmonoriginal.betterwithdiscord.image.ClientAssets;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -72,7 +72,7 @@ public final class EntityGeometries {
             try {
                 load(file);
             } catch (RuntimeException e) {
-                BetterWithDiscordMod.LOGGER.warn("Could not read entity model " + path + ": " + e.getMessage());
+                BetterWithDiscordMod.LOGGER.warn("Could not read entity model {}", path, e);
             }
         }
     }
@@ -91,6 +91,7 @@ public final class EntityGeometries {
             byte[] data = assets.read(path);
             return data == null ? null : JsonParser.parseString(new String(data, StandardCharsets.UTF_8)).getAsJsonObject();
         } catch (IOException | RuntimeException e) {
+            BetterWithDiscordMod.LOGGER.debug("Could not read {}", path, e);
             return null;
         }
     }

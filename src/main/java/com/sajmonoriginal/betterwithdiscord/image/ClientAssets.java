@@ -55,20 +55,33 @@ public final class ClientAssets implements AutoCloseable {
     public static ClientAssets open(Path cacheDir) throws IOException {
         Path jar = download(cacheDir);
         List<ModArchive> mods = new ArrayList<>();
-        for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
-            String id = mod.getMetadata().getId();
-            if (SKIPPED_MODS.contains(id) || mod.getOrigin().getKind() != ModOrigin.Kind.PATH) {
-                continue;
-            }
-            for (Path origin : mod.getOrigin().getPaths()) {
-                if (Files.isDirectory(origin)) {
-                    mods.add(new ModArchive(id, null, origin));
-                } else if (Files.isRegularFile(origin)) {
-                    mods.add(new ModArchive(id, new ZipFile(origin.toFile()), null));
+        try {
+            for (ModContainer mod : FabricLoader.getInstance().getAllMods()) {
+                String id = mod.getMetadata().getId();
+                if (SKIPPED_MODS.contains(id) || mod.getOrigin().getKind() != ModOrigin.Kind.PATH) {
+                    continue;
+                }
+                for (Path origin : mod.getOrigin().getPaths()) {
+                    if (Files.isDirectory(origin)) {
+                        mods.add(new ModArchive(id, null, origin));
+                    } else if (Files.isRegularFile(origin)) {
+                        mods.add(new ModArchive(id, new ZipFile(origin.toFile()), null));
+                    }
                 }
             }
+            return new ClientAssets(new ZipFile(jar.toFile()), mods);
+        } catch (IOException | RuntimeException e) {
+            for (ModArchive mod : mods) {
+                if (mod.jar() != null) {
+                    try {
+                        mod.jar().close();
+                    } catch (IOException suppressed) {
+                        e.addSuppressed(suppressed);
+                    }
+                }
+            }
+            throw e;
         }
-        return new ClientAssets(new ZipFile(jar.toFile()), mods);
     }
 
     public byte[] read(String path) throws IOException {

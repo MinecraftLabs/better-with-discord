@@ -3,6 +3,7 @@ package com.sajmonoriginal.betterwithdiscord.image;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
@@ -58,12 +59,9 @@ public final class TooltipRenderer {
             }
             return padding;
         } catch (IOException | RuntimeException e) {
+            BetterWithDiscordMod.LOGGER.debug("Could not read the tooltip padding", e);
             return padding;
         }
-    }
-
-    public BufferedImage render(String tooltip) {
-        return render(tooltip, null);
     }
 
     public BufferedImage render(String tooltip, BufferedImage below) {

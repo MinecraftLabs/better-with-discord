@@ -4,9 +4,11 @@ import com.sajmonoriginal.betterwithdiscord.BetterWithDiscordMod;
 import com.sajmonoriginal.betterwithdiscord.config.BetterWithDiscordConfig;
 import com.sajmonoriginal.betterwithdiscord.image.GameImages;
 import com.sajmonoriginal.betterwithdiscord.preview.DiscordImages;
+import com.sajmonoriginal.betterwithdiscord.preview.MapPreviews;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.entities.Activity;
+import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.Message;
 import net.dv8tion.jda.api.entities.Webhook;
@@ -15,12 +17,14 @@ import net.dv8tion.jda.api.entities.sticker.StickerItem;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.requests.GatewayIntent;
+import net.dv8tion.jda.api.utils.messages.MessageRequest;
 import net.minecraft.server.MinecraftServer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
@@ -29,9 +33,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class DiscordClient {
-    public static volatile JDA jda;
-    public static volatile Webhook webhook;
-    private static StandardGuildMessageChannel channel;
+    static volatile JDA jda;
+    static volatile Webhook webhook;
+    private static volatile StandardGuildMessageChannel channel;
     private static final String WEBHOOK_NAME = "BTA Chat Link";
     private static CompletableFuture<Webhook> replacement;
     private static final ScheduledExecutorService SCHEDULER = Executors.newSingleThreadScheduledExecutor(task -> {
@@ -45,6 +49,7 @@ public class DiscordClient {
     private static boolean serverStarted;
 
     public static void start() {
+        MessageRequest.setDefaultMentions(EnumSet.noneOf(Message.MentionType.class));
         try {
             JDA client = JDABuilder.createLight(
                             BetterWithDiscordConfig.token,
@@ -104,6 +109,8 @@ public class DiscordClient {
         }
 
         SCHEDULER.shutdownNow();
+        DiscordCommands.stop();
+        MapPreviews.stop();
         DiscordChatRelay.sendServerStoppedMessage();
         ConsoleAppender.unregister();
         webhook = null;
@@ -146,6 +153,11 @@ public class DiscordClient {
             frozen = false;
             DiscordChatRelay.sendServerRecoveredMessage();
         }
+    }
+
+    static @Nullable Guild guild() {
+        StandardGuildMessageChannel channel = getChannel();
+        return channel == null ? null : channel.getGuild();
     }
 
     private static @Nullable StandardGuildMessageChannel getChannel() {
@@ -206,7 +218,7 @@ public class DiscordClient {
             }
 
             Message message = event.getMessage();
-            StringBuilder content = new StringBuilder(message.getContentStripped());
+            StringBuilder content = new StringBuilder(message.getContentDisplay());
             Message referenced = message.getReferencedMessage();
             if (referenced != null) {
                 content.insert(0, "(reply to " + displayName(referenced) + ") ");

@@ -16,9 +16,9 @@ import net.dv8tion.jda.api.exceptions.ErrorResponseException;
 import net.dv8tion.jda.api.requests.ErrorResponse;
 import net.dv8tion.jda.api.requests.restaction.WebhookMessageCreateAction;
 import net.dv8tion.jda.api.utils.FileUpload;
-import net.dv8tion.jda.api.utils.MarkdownSanitizer;
 import net.minecraft.core.entity.player.Player;
 import net.minecraft.core.item.ItemStack;
+import net.minecraft.core.lang.I18n;
 import net.minecraft.core.net.ChatEmotes;
 import net.minecraft.core.net.command.TextFormatting;
 import net.minecraft.core.util.helper.NetCharacters;
@@ -26,7 +26,6 @@ import net.minecraft.server.MinecraftServer;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -34,9 +33,12 @@ import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -56,23 +58,29 @@ public class DiscordChatRelay {
     });
     private static final int MAX_NAME_LENGTH = 80;
     private static final List<String> RESERVED_NAMES = List.of("clyde", "discord");
+    private static final String HEADS = "https://www.mc-heads.net/head/";
+    private static final long STOP_TIMEOUT_SECONDS = 5;
 
     public static void sendToMinecraft(String author, String message, List<DiscordImages.Entry> images) {
         MinecraftServer server = MinecraftServer.getInstance();
         String prefix = "[" + TextFormatting.PURPLE + "DISCORD" + TextFormatting.RESET + "] <" + clean(author) + "> ";
-        List<String> lines = new ArrayList<>();
+        List<String> raw = new ArrayList<>();
         for (String line : message.split("\n")) {
-            String text = ChatEmotes.process(clean(line)).trim();
+            String text = clean(line).strip();
             if (text.isEmpty()) {
                 continue;
             }
             if (text.length() > MAX_LINE_LENGTH) {
                 text = text.substring(0, MAX_LINE_LENGTH);
             }
-            lines.add(text);
+            raw.add(ChatEmotes.process(text));
+        }
+        List<String> lines = new ArrayList<>();
+        for (String line : DiscordMarkdown.toGame(raw)) {
             if (lines.size() == MAX_LINES) {
                 break;
             }
+            lines.add(line);
         }
         if (!images.isEmpty()) {
             StringBuilder links = new StringBuilder();
@@ -115,7 +123,16 @@ public class DiscordChatRelay {
     }
 
     public static String relayChat(Player player, String message) {
-        String inGame = message;
+        try {
+            return relay(player, message);
+        } catch (RuntimeException e) {
+            BetterWithDiscordMod.LOGGER.warn("Could not relay the chat message of {}", player.username, e);
+            return message;
+        }
+    }
+
+    private static String relay(Player player, String message) {
+        String inGame = DiscordMarkdown.line(message);
         String toDiscord = message;
         ItemSnapshot item = null;
         ItemStack held = player.inventory.getCurrentItem();
@@ -142,10 +159,10 @@ public class DiscordChatRelay {
     }
 
     private static void sendToDiscord(Player player, String message, ItemSnapshot item, InventorySnapshot inventory) {
-        String content = MarkdownSanitizer.escape(TextFormatting.removeAllFormatting(message));
+        String content = TextFormatting.removeAllFormatting(message);
         String name = webhookName(TextFormatting.removeAllFormatting(player.getDisplayName()));
-        String avatar = "https://www.mc-heads.net/head/" + player.username + "/150";
-        CHAT.execute(() -> {
+        String avatar = HEADS + player.username;
+        execute(() -> {
             List<MessageEmbed> embeds = new ArrayList<>();
             Map<String, byte[]> files = new LinkedHashMap<>();
             GameImages images = GameImages.get();
@@ -166,18 +183,19 @@ public class DiscordChatRelay {
                     files.put(INVENTORY_FILE, images.inventory(inventory));
                     embeds.add(new EmbedBuilder()
                             .setColor(INVENTORY_COLOR)
-                            .setAuthor(inventory.playerName() + "'s Inventory", null, avatar)
+                            .setAuthor(limit(inventory.playerName() + "'s Inventory", MessageEmbed.AUTHOR_MAX_LENGTH), null, avatar)
                             .setImage("attachment://" + INVENTORY_FILE)
                             .build());
                 } catch (RuntimeException e) {
                     BetterWithDiscordMod.LOGGER.warn("Could not draw the inventory of {}", inventory.playerName(), e);
                 }
             }
+            DiscordMentions.Resolved mentions = DiscordMentions.resolve(content, DiscordClient.guild());
             send(webhook -> {
-                WebhookMessageCreateAction<Message> action = webhook.sendMessage(content)
+                WebhookMessageCreateAction<Message> action = webhook.sendMessage(mentions.content())
                         .setUsername(name)
                         .setAvatarUrl(avatar)
-                        .setAllowedMentions(EnumSet.noneOf(Message.MentionType.class));
+                        .mention(mentions.mentions());
                 if (!embeds.isEmpty()) {
                     action.addEmbeds(embeds);
                     files.forEach((file, data) -> action.addFiles(FileUpload.fromData(data, file)));
@@ -190,8 +208,8 @@ public class DiscordChatRelay {
     private static MessageEmbed itemEmbed(String player, String avatar, ItemSnapshot item, int color, boolean withIcon) {
         EmbedBuilder embed = new EmbedBuilder()
                 .setColor(color)
-                .setAuthor(player + "'s Item", null, avatar)
-                .setTitle(item.name() + (item.count() > 1 ? " x" + item.count() : ""))
+                .setAuthor(limit(player + "'s Item", MessageEmbed.AUTHOR_MAX_LENGTH), null, avatar)
+                .setTitle(limit(item.name() + (item.count() > 1 ? " x" + item.count() : ""), MessageEmbed.TITLE_MAX_LENGTH))
                 .setImage("attachment://" + TOOLTIP_FILE);
         if (withIcon) {
             embed.setThumbnail("attachment://" + ICON_FILE);
@@ -200,22 +218,24 @@ public class DiscordChatRelay {
     }
 
     public static void sendJoinLeaveMessage(Player player, boolean joined) {
-        String name = TextFormatting.removeAllFormatting(player.getDisplayName());
-        sendEmbed(new EmbedBuilder()
+        String name = TextFormatting.removeAllFormatting(player.getDisplayName()) + (joined ? " joined" : " left") + " the server";
+        String avatar = HEADS + player.username;
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(joined ? 0x00FF00 : 0xFF0000)
-                .setAuthor(name + (joined ? " joined" : " left") + " the server", null, "https://www.mc-heads.net/head/" + player.username)
+                .setAuthor(limit(name, MessageEmbed.AUTHOR_MAX_LENGTH), null, avatar)
                 .build());
     }
 
-    public static void sendDeathMessage(String deathMessage) {
-        sendEmbed(new EmbedBuilder()
+    public static void sendDeathMessage(String key, String[] args) {
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0xFF0000)
-                .setAuthor(deathMessage, null, "https://i.imgur.com/l1EJ6fx.png")
+                .setAuthor(limit(TextFormatting.removeAllFormatting(I18n.getInstance().translateKeyAndFormat(key, (Object[]) args)),
+                        MessageEmbed.AUTHOR_MAX_LENGTH), null, "https://i.imgur.com/l1EJ6fx.png")
                 .build());
     }
 
     public static void sendServerStartMessage() {
-        sendEmbed(new EmbedBuilder()
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0x4ae485)
                 .setAuthor("Server started!")
                 .setTimestamp(Instant.now())
@@ -223,28 +243,37 @@ public class DiscordChatRelay {
     }
 
     public static void sendServerStoppedMessage() {
-        Webhook webhook = DiscordClient.webhook;
-        if (webhook == null) return;
-        MessageEmbed embed = new EmbedBuilder()
-                .setColor(0xf92f60)
-                .setAuthor("Server stopped!")
-                .setTimestamp(Instant.now())
-                .build();
+        Future<?> stopped = CHAT.submit(() -> {
+            Webhook webhook = DiscordClient.webhook;
+            if (webhook == null) {
+                return;
+            }
+            try {
+                serverMessage(webhook.sendMessageEmbeds(new EmbedBuilder()
+                        .setColor(0xf92f60)
+                        .setAuthor("Server stopped!")
+                        .setTimestamp(Instant.now())
+                        .build()))
+                        .submit()
+                        .get(STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException | TimeoutException e) {
+                BetterWithDiscordMod.LOGGER.warn("Could not send the stop message to Discord", e);
+            }
+        });
+        CHAT.shutdown();
         try {
-            webhook.sendMessageEmbeds(embed)
-                    .setUsername(webhookName(BetterWithDiscordConfig.serverName))
-                    .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl)
-                    .submit()
-                    .get(5, TimeUnit.SECONDS);
+            stopped.get(STOP_TIMEOUT_SECONDS * 2, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (ExecutionException | TimeoutException e) {
-            BetterWithDiscordMod.LOGGER.warn("Could not send the stop message to Discord", e);
+            BetterWithDiscordMod.LOGGER.warn("Discord messages were still being sent when the server stopped", e);
         }
     }
 
     public static void sendServerFrozenMessage(int seconds) {
-        sendEmbed(new EmbedBuilder()
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0xf9a62f)
                 .setAuthor("The server has not responded for " + seconds + " seconds")
                 .setTimestamp(Instant.now())
@@ -252,7 +281,7 @@ public class DiscordChatRelay {
     }
 
     public static void sendServerRecoveredMessage() {
-        sendEmbed(new EmbedBuilder()
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0x4ae485)
                 .setAuthor("The server is responding again")
                 .setTimestamp(Instant.now())
@@ -260,16 +289,36 @@ public class DiscordChatRelay {
     }
 
     public static void sendServerSleepMessage() {
-        sendEmbed(new EmbedBuilder()
+        sendEmbed(() -> new EmbedBuilder()
                 .setColor(0x222d5a)
                 .setAuthor("The Night was Skipped", null, "https://i.imgur.com/R1e1sJS.png")
                 .build());
     }
 
-    private static void sendEmbed(MessageEmbed embed) {
-        send(webhook -> webhook.sendMessageEmbeds(embed)
-                .setUsername(webhookName(BetterWithDiscordConfig.serverName))
-                .setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl));
+    private static void sendEmbed(Supplier<MessageEmbed> embed) {
+        execute(() -> send(webhook -> serverMessage(webhook.sendMessageEmbeds(embed.get()))));
+    }
+
+    private static WebhookMessageCreateAction<Message> serverMessage(WebhookMessageCreateAction<Message> action) {
+        return action.setUsername(webhookName(BetterWithDiscordConfig.serverName)).setAvatarUrl(BetterWithDiscordConfig.serverAvatarUrl);
+    }
+
+    private static void execute(Runnable task) {
+        try {
+            CHAT.execute(() -> {
+                try {
+                    task.run();
+                } catch (RuntimeException e) {
+                    BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", e);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            BetterWithDiscordMod.LOGGER.debug("Dropped a Discord message after the server stopped", e);
+        }
+    }
+
+    static String limit(String text, int length) {
+        return text.length() > length ? text.substring(0, length) : text;
     }
 
     private static String webhookName(String name) {
@@ -284,7 +333,7 @@ public class DiscordChatRelay {
         if (allowed.isEmpty()) {
             return "Player";
         }
-        return allowed.length() > MAX_NAME_LENGTH ? allowed.substring(0, MAX_NAME_LENGTH) : allowed.toString();
+        return limit(allowed.toString(), MAX_NAME_LENGTH);
     }
 
     private static void send(Function<Webhook, WebhookMessageCreateAction<Message>> message) {
@@ -292,7 +341,13 @@ public class DiscordChatRelay {
         if (webhook == null) return;
         message.apply(webhook).queue(null, error -> {
             if (error instanceof ErrorResponseException response && response.getErrorResponse() == ErrorResponse.UNKNOWN_WEBHOOK) {
-                DiscordClient.replaceWebhook(webhook).thenAccept(replacement -> message.apply(replacement).queue());
+                DiscordClient.replaceWebhook(webhook).whenComplete((replacement, failure) -> {
+                    if (failure != null) {
+                        BetterWithDiscordMod.LOGGER.warn("Could not create a new chat webhook", failure);
+                    } else {
+                        message.apply(replacement).queue(null, retry -> BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", retry));
+                    }
+                });
             } else {
                 BetterWithDiscordMod.LOGGER.warn("Could not send a message to Discord", error);
             }

@@ -1,5 +1,7 @@
 package com.sajmonoriginal.betterwithdiscord.image;
 
+import java.awt.geom.AffineTransform;
+import java.awt.image.AffineTransformOp;
 import java.awt.image.BufferedImage;
 
 public final class Canvas {
@@ -16,33 +18,11 @@ public final class Canvas {
     }
 
     public void blend(int x, int y, int argb) {
-        if (x < 0 || y < 0 || x >= width || y >= height) {
-            return;
-        }
-        int srcAlpha = argb >>> 24;
-        if (srcAlpha == 0) {
+        if (x < 0 || y < 0 || x >= width || y >= height || argb >>> 24 == 0) {
             return;
         }
         int index = y * width + x;
-        if (srcAlpha == 255) {
-            pixels[index] = argb;
-            return;
-        }
-        int dst = pixels[index];
-        int dstAlpha = dst >>> 24;
-        int outAlpha = srcAlpha + dstAlpha * (255 - srcAlpha) / 255;
-        if (outAlpha == 0) {
-            pixels[index] = 0;
-            return;
-        }
-        int red = mix(argb >> 16 & 0xFF, srcAlpha, dst >> 16 & 0xFF, dstAlpha, outAlpha);
-        int green = mix(argb >> 8 & 0xFF, srcAlpha, dst >> 8 & 0xFF, dstAlpha, outAlpha);
-        int blue = mix(argb & 0xFF, srcAlpha, dst & 0xFF, dstAlpha, outAlpha);
-        pixels[index] = outAlpha << 24 | red << 16 | green << 8 | blue;
-    }
-
-    private static int mix(int src, int srcAlpha, int dst, int dstAlpha, int outAlpha) {
-        return (src * srcAlpha + dst * dstAlpha * (255 - srcAlpha) / 255) / outAlpha;
+        pixels[index] = Pixels.blend(pixels[index], argb);
     }
 
     public void fill(int x0, int y0, int x1, int y1, int argb) {
@@ -83,11 +63,6 @@ public final class Canvas {
 
     public static BufferedImage upscale(BufferedImage image, int factor) {
         BufferedImage scaled = new BufferedImage(image.getWidth() * factor, image.getHeight() * factor, BufferedImage.TYPE_INT_ARGB);
-        for (int y = 0; y < scaled.getHeight(); y++) {
-            for (int x = 0; x < scaled.getWidth(); x++) {
-                scaled.setRGB(x, y, image.getRGB(x / factor, y / factor));
-            }
-        }
-        return scaled;
+        return new AffineTransformOp(AffineTransform.getScaleInstance(factor, factor), AffineTransformOp.TYPE_NEAREST_NEIGHBOR).filter(image, scaled);
     }
 }
