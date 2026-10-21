@@ -11,7 +11,7 @@
 		"sources": "https://github.com/MinecraftLabs/better-with-discord",
 		"issues": "https://github.com/MinecraftLabs/better-with-discord/issues"
 	},
-	"license": "MPL-2.0",
+	"license": "See LICENSE",
 	"environment": "server",
 	"entrypoints": {
 		"server": [
